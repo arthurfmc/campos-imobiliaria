@@ -1,0 +1,4 @@
+dev/mock-onedrive/
+*.docx
+node_modules/
+.claude/
