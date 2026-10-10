@@ -1,5 +1,5 @@
 // Base de dados (um arquivo JSON no OneDrive) + regras de negócio.
-import { clone, hojeISO, mesAtual, somaMeses, somaMesesData, diaMenos1, vencimentoDe, novoId } from './util.js';
+import { clone, hojeISO, mesAtual, somaMeses, somaMesesData, diaMenos1, vencimentoDe, novoId, fmtMoeda } from './util.js';
 import { ConflitoError } from './storage.js';
 
 export const ARQUIVO_DB = 'dados/imobiliaria.json';
@@ -395,3 +395,64 @@ export function garantiaVencimento(c) {
 }
 
 export { novoId };
+
+// ---------------------------------------------------------------------------
+// Histórico e encargos não recebidos
+// ---------------------------------------------------------------------------
+// Todas as cobranças (do início do controle até hoje ou até o fim do contrato) dos contratos informados.
+export function todasCobrancas(db, contratos, indices = null) {
+  const res = [];
+  const hoje = mesAtual();
+  for (const c of contratos) {
+    if (c.status === 'cancelado') continue;
+    const inicio = c.controleDesde || c.dataInicio?.slice(0, 7);
+    if (!inicio) continue;
+    const fim = c.status === 'encerrado' ? (c.dataEncerramento || fimContrato(c)).slice(0, 7) : hoje;
+    for (let ym = inicio; ym <= fim && ym <= hoje; ym = somaMeses(ym, 1)) {
+      res.push(...cobrancasDoMes({ ...db, contratos: [c] }, ym, indices));
+    }
+  }
+  return res.sort((a, b) => b.vencimento.localeCompare(a.vencimento));
+}
+
+// Multa/juros que deixaram de entrar: devido pela regra do contrato menos o que foi cobrado.
+export function naoRecebido(cob) {
+  if (!cob.pagamento || !cob.pagoComAtraso) return 0;
+  return Math.max(0, Math.round((cob.encargos.total - (Number(cob.pagamento.acrescimos) || 0)) * 100) / 100);
+}
+
+export function resumoCobrancas(cobs) {
+  const pagos = cobs.filter((x) => x.pagamento);
+  const atrasados = pagos.filter((x) => x.pagoComAtraso);
+  const emAberto = cobs.filter((x) => x.status === 'atrasado' || (x.status === 'parcial' && x.vencimento < hojeISO()));
+  const soma = (l, f) => Math.round(l.reduce((s, x) => s + f(x), 0) * 100) / 100;
+  const dispensado = soma(atrasados, (x) => Math.min(naoRecebido(x), Number(x.pagamento.encargosDispensados) || 0));
+  const naoRec = soma(atrasados, naoRecebido);
+  return {
+    meses: cobs.length, pagos: pagos.length, pagosComAtraso: atrasados.length,
+    pontualidade: pagos.length ? Math.round((1 - atrasados.length / pagos.length) * 100) : null,
+    atrasoMedio: atrasados.length ? Math.round(atrasados.reduce((s, x) => s + x.encargos.dias, 0) / atrasados.length) : 0,
+    esperado: soma(cobs, (x) => x.valor), recebido: soma(pagos, (x) => Number(x.pagamento.valorPago) || 0),
+    emAberto: emAberto.length, valorEmAberto: soma(emAberto, (x) => x.valor - (Number(x.pagamento?.valorPago) || 0)),
+    encargosEmAberto: soma(emAberto, (x) => x.encargos.total),
+    encargosDevidos: soma(atrasados, (x) => x.encargos.total), encargosCobrados: soma(atrasados, (x) => Math.min(x.encargos.total, Number(x.pagamento.acrescimos) || 0)),
+    naoRecebido: naoRec, dispensado, pendenteCobranca: Math.round((naoRec - dispensado) * 100) / 100,
+  };
+}
+
+// Linha do tempo de um conjunto de contratos (eventos de contrato, reajustes, aditivos, vistorias, documentos).
+export function eventosContratos(db, contratos) {
+  const ev = [];
+  for (const c of contratos) {
+    const q = porId(db.inquilinos, c.inquilinoId);
+    const im = porId(db.imoveis, c.imovelId);
+    const quem = `${q?.nome || 'Inquilino'} — Ref. ${im?.ref ?? '?'}`;
+    if (c.dataInicio) ev.push({ data: c.dataInicio, tipo: 'Início', texto: `Início do contrato: ${quem} (${c.prazoMeses} meses, aluguel inicial ${fmtMoeda(c.valorInicial)})`, contratoId: c.id });
+    if (c.status === 'encerrado') ev.push({ data: c.dataEncerramento || fimContrato(c), tipo: 'Encerramento', texto: `Contrato encerrado: ${quem}${c.motivoEncerramento ? ` — ${c.motivoEncerramento}` : ''}${c.multaRescisoria ? ` (multa rescisória ${fmtMoeda(c.multaRescisoria)})` : ''}`, contratoId: c.id });
+    for (const r of c.reajustes || []) ev.push({ data: `${r.vigenciaDesde}-01`, tipo: r.tipo === 'aditivo' ? 'Aditivo' : 'Reajuste', texto: `${r.tipo === 'manual' ? 'Valor informado' : r.tipo === 'aditivo' ? 'Novo valor por aditivo' : `Reajuste ${r.indice}`}: ${fmtMoeda(r.valorAnterior)} → ${fmtMoeda(r.valorNovo)} (${quem})`, contratoId: c.id, valor: true });
+    for (const a of c.aditivos || []) ev.push({ data: a.data, tipo: 'Aditivo', texto: `${a.numero}º termo aditivo (${quem})`, contratoId: c.id });
+    for (const v of c.vistorias || []) ev.push({ data: v.data, tipo: 'Vistoria', texto: `Vistoria de ${v.tipo === 'saida' ? 'saída' : 'entrada'} (${quem})`, contratoId: c.id });
+    for (const d of c.documentos || []) ev.push({ data: (d.criadoEm || '').slice(0, 10), tipo: 'Documento', texto: `${d.tipo}: ${d.nome}`, contratoId: c.id, webUrl: d.webUrl });
+  }
+  return ev.filter((e) => e.data).sort((a, b) => b.data.localeCompare(a.data));
+}

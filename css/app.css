@@ -237,6 +237,13 @@ label.botao.desativado { opacity: .6; cursor: wait; }
 .historico tr.atrasado td { background: var(--aviso-suave); }
 a.botao.pequeno { padding: 4px 10px; font-size: 13px; }
 
+.sub-info { margin: -6px 0 14px; color: var(--texto-2); font-size: 13px; }
+.linha-tempo { list-style: none; margin: 0; padding: 0; }
+.linha-tempo li { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--borda); font-size: 13px; flex-wrap: wrap; }
+.linha-tempo .lt-data { min-width: 82px; color: var(--texto-2); font-variant-numeric: tabular-nums; }
+.lista-mover { list-style: none; padding: 0; margin: 8px 0; max-height: 300px; overflow-y: auto; }
+.lista-mover li { padding: 4px 0; font-size: 13px; }
+
 /* ---------- Modal e toast ---------- */
 .modal-fundo { position: fixed; inset: 0; background: rgba(10, 15, 12, .45); display: grid; place-items: center; z-index: 50; padding: 16px; }
 .modal { background: var(--superficie); border-radius: 12px; width: min(560px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
@@ -279,6 +286,8 @@ a.botao.pequeno { padding: 4px 10px; font-size: 13px; }
   .faixa-demo { display: none; }
 }
 @media print {
-  .lateral, .topo, .barra-acoes, .acoes, .rodape-acoes { display: none !important; }
+  .lateral, .topo, .barra-acoes, .acoes, .rodape-acoes, .nao-imprimir, .menu-btn { display: none !important; }
+  body { background: #fff; }
+  .cartao { box-shadow: none; break-inside: avoid-page; }
   .layout { display: block; }
 }

@@ -206,6 +206,34 @@ export class GraphStorage {
     return meta ? { webUrl: meta.webUrl, modificadoEm: meta.lastModifiedDateTime, modificadoPor: meta.lastModifiedBy?.user?.displayName || '' } : null;
   }
 
+  // Lista o conteúdo de uma subpasta: [{ nome, id, pasta, webUrl }]. Pasta inexistente = lista vazia.
+  async listarPasta(rel) {
+    const res = [];
+    let url = `${this.item(rel)}/children?$select=id,name,folder,webUrl&$top=200`;
+    while (url) {
+      const r = await this.req('GET', url, { aceitar: [404] });
+      if (r.status === 404) return [];
+      const j = await r.json();
+      for (const it of j.value || []) res.push({ nome: it.name, id: it.id, pasta: !!it.folder, webUrl: it.webUrl });
+      url = j['@odata.nextLink'] || null;
+    }
+    return res;
+  }
+
+  // Move um arquivo ou pasta para outra subpasta (criando-a se preciso). Mantém o id do item.
+  async mover(relOrigem, relPastaDestino) {
+    const item = await this.getJson(this.item(relOrigem));
+    if (!item) throw new Error(`Não encontrei "${relOrigem}" no OneDrive`);
+    await this.garantirPasta(relPastaDestino);
+    const destino = await this.getJson(this.item(relPastaDestino));
+    const r = await this.req('PATCH', `/drives/${this.pasta.driveId}/items/${item.id}?@microsoft.graph.conflictBehavior=rename`, {
+      corpo: JSON.stringify({ parentReference: { id: destino.id } }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const j = await r.json();
+    return { nome: j.name, webUrl: j.webUrl, id: j.id };
+  }
+
   // Baixa o conteúdo de um arquivo salvo (ex.: fotos para o termo de vistoria).
   async baixarArquivo(id) {
     const meta = await this.getJson(`/drives/${this.pasta.driveId}/items/${id}`);
@@ -252,6 +280,26 @@ export class MemoryStorage {
     return { webUrl: url, nome: rel.split('/').pop(), id };
   }
   async lerArquivo(rel) { return this.porCaminho?.get(rel)?.blob || null; }
+  async listarPasta(rel) {
+    const res = new Map();
+    for (const [caminho, a] of this.porCaminho || []) {
+      if (!caminho.startsWith(rel + '/')) continue;
+      const resto = caminho.slice(rel.length + 1);
+      const nome = resto.split('/')[0];
+      res.set(nome, { nome, id: nome, pasta: resto.includes('/'), webUrl: a.webUrl });
+    }
+    return [...res.values()];
+  }
+  async mover(relOrigem, relPastaDestino) {
+    const nome = relOrigem.split('/').pop();
+    for (const [caminho, a] of [...(this.porCaminho || [])]) {
+      if (caminho === relOrigem || caminho.startsWith(relOrigem + '/')) {
+        this.porCaminho.delete(caminho);
+        this.porCaminho.set(relPastaDestino + '/' + nome + caminho.slice(relOrigem.length), a);
+      }
+    }
+    return { nome, webUrl: null };
+  }
   async infoArquivo(rel) { const a = this.porCaminho?.get(rel); return a ? { webUrl: a.webUrl, modificadoEm: a.modificadoEm, modificadoPor: '' } : null; }
   async miniatura(id) { return this.urls?.get(id) || null; }
   async baixarArquivo(id) { return (await fetch(this.urls.get(id))).blob(); }

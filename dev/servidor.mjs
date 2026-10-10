@@ -50,6 +50,17 @@ async function graph(req, res, url) {
     const rel = relDe(m[1]);
     return json(res, 200, { value: /\.(jpe?g|png)$/i.test(rel) ? [{ medium: { url: `http://localhost:${PORTA}/mock-download/${m[1]}` } }] : [] });
   }
+  if (req.method === 'PATCH' && (m = p.match(/^\/drives\/d1\/items\/([^/:]+)$/))) {
+    const origem = relDe(m[1]);
+    const dados = JSON.parse((await corpo(req)).toString());
+    const destDir = relDe(dados.parentReference.id);
+    let final = path.posix.join(destDir, path.posix.basename(origem));
+    const ext = path.extname(final); const base = final.slice(0, -ext.length || undefined);
+    for (let i = 1; fs.existsSync(abs(final)); i++) final = `${base} ${i}${ext}`;
+    fs.renameSync(abs(origem), abs(final));
+    console.log(`  movido: ${origem} -> ${final}`);
+    return json(res, 200, meta(final));
+  }
   // /drives/d1/items/{id}[:/{rel}:][/content|/children|/createUploadSession]
   m = p.match(/^\/drives\/d1\/items\/([^/:]+)(?::\/(.+?):)?(\/content|\/children|\/createUploadSession)?$/);
   if (!m) return json(res, 400, { error: { message: `rota não simulada: ${req.method} ${p}` } });
@@ -59,6 +70,11 @@ async function graph(req, res, url) {
   if (req.method === 'GET' && !acao) {
     const it = meta(rel);
     return it ? json(res, 200, it) : json(res, 404, { error: { message: 'itemNotFound' } });
+  }
+  if (req.method === 'GET' && acao === '/children') {
+    const p = abs(rel);
+    if (!fs.existsSync(p)) return json(res, 404, { error: { message: 'itemNotFound' } });
+    return json(res, 200, { value: fs.readdirSync(p).map((n) => meta(path.posix.join(rel, n))) });
   }
   if (req.method === 'POST' && acao === '/createUploadSession') {
     let final = rel;

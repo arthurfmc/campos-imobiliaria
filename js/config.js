@@ -13,6 +13,7 @@ export const CONFIG = {
 
   // Subpastas onde os documentos gerados são salvos (dentro da pasta acima).
   pastaContratos: 'contratos/Vigentes',
+  pastaEncerrados: 'contratos/Encerrados',
   pastaNotificacoes: 'notificações',
   pastaLaudos: 'laudos',
   pastaModelos: 'modelos',

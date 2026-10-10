@@ -9,6 +9,8 @@ import {
   MODELOS, modeloContrato, dadosContrato, modeloVistoria, dadosVistoria, preencher, preencherModeloWord, chaveModeloVistoria,
 } from '../modelos.js';
 
+import { pastaDestino } from './pastas.js';
+
 export const caminhoModelo = (chave) => `${CONFIG.pastaModelos}/${MODELOS[chave].arquivo}`;
 
 // Usa o modelo editado no Word (pasta modelos) se existir; senão, o texto padrão do sistema.
@@ -35,7 +37,7 @@ import { nomeArquivo, somaMeses, mesAtual, hojeISO, novoId, fmtPct } from '../ut
 export async function gerarContratoDocx(contratoId) {
   const c = D.porId(db().contratos, contratoId);
   const { blob, usouModelo } = await montarDocumento('contrato', dadosContrato(db(), c));
-  const doc = await gerarDocx(blob, nomeArquivoContrato(db(), c), CONFIG.pastaContratos);
+  const doc = await gerarDocx(blob, nomeArquivoContrato(db(), c), pastaDestino(c.status));
   doc.modelo = usouModelo ? 'Modelo do Word' : 'Texto padrão';
   app.store.commit('Contrato gerado (.docx)', (d) => {
     const cc = D.porId(d.contratos, contratoId);
@@ -68,7 +70,7 @@ export async function gerarReciboDocx(contratoId, pagamentoId) {
 export function pastaDoContrato(c) {
   const i = D.porId(db().imoveis, c.imovelId);
   const q = D.porId(db().inquilinos, c.inquilinoId);
-  return `${CONFIG.pastaContratos}/${nomeArquivo(`Ref ${String(i?.ref ?? '').padStart(2, '0')} - ${q?.nome || 'contrato'}`)}`;
+  return `${pastaDestino(c.status)}/${nomeArquivo(`Ref ${String(i?.ref ?? '').padStart(2, '0')} - ${q?.nome || 'contrato'}`)}`;
 }
 
 // Baixa as fotos (anexos com id) e prepara para entrar no documento.

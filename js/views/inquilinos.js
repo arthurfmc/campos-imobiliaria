@@ -189,6 +189,7 @@ export const InquilinoDetalhe = {
     <div class="titulo-pagina">
       <div><a href="#/inquilinos" class="voltar">← Inquilinos</a><h1>{{ novo ? 'Novo inquilino' : form.nome }}</h1></div>
       <div class="acoes">
+        <button v-if="!novo" @click="ir('#/historico?inquilino=' + form.id)">Histórico completo</button>
         <button v-if="!novo" @click="ir('#/contrato/novo?inquilino=' + form.id)">+ Nova locação</button>
         <button class="primario" :disabled="!alterado" @click="salvar">Salvar</button>
       </div>

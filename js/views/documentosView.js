@@ -4,6 +4,7 @@ import { gerarContratoDocx, gerarLaudoEmBrancoDocx, criarModeloWord, caminhoMode
 import { VistoriaModal, AMB_COMERCIAL, AMB_RESIDENCIAL } from './vistoria.js';
 import { MODELOS, CAMPOS_AJUDA } from '../modelos.js';
 import * as D from '../db.js';
+import { OrganizarPastas } from './pastas.js';
 
 const TIPOS_DOC = [
   ['contrato', 'Contrato de locação (.docx)'],
@@ -14,7 +15,7 @@ const TIPOS_DOC = [
 ];
 
 export const Documentos = {
-  components: { VistoriaModal },
+  components: { VistoriaModal, OrganizarPastas },
   props: { query: Object },
   setup() { return { app, ...helpers, TIPOS_DOC, MODELOS, CAMPOS_AJUDA }; },
   data() {
@@ -87,6 +88,8 @@ export const Documentos = {
       </div>
       <p class="dica">Os arquivos são salvos no OneDrive (contratos em <code>contratos/Vigentes</code>, laudos em <code>laudos</code>) e baixados no computador. Depois de gerado, o .docx pode ser editado livremente no Word. Para mudar os dados do contrato (fiadores, garantia, valores), edite o contrato e gere de novo.</p>
     </div>
+
+    <OrganizarPastas v-if="app.modo === 'onedrive'" />
 
     <div class="cartao">
       <h2>Modelos editáveis no Word</h2>

@@ -207,7 +207,7 @@ export const DespesaModal = {
 export const Financeiro = {
   components: { Chip, Kpi, PagamentoModal, DespesaModal },
   setup() { return { app, ...helpers }; },
-  data() { return { ym: mesAtual(), pagamento: null, despesa: null, ano: mesAtual().slice(0, 4), selecionados: [], dataLote: hojeISO() }; },
+  data() { return { ym: mesAtual(), pagamento: null, despesa: null, ano: mesAtual().slice(0, 4), selecionados: [], dataLote: hojeISO(), periodoPerdas: mesAtual().slice(0, 4) }; },
   computed: {
     db,
     cobrancas() {
@@ -226,6 +226,20 @@ export const Financeiro = {
         ...c, inq: D.porId(this.db.inquilinos, c.contrato.inquilinoId), im: D.porId(this.db.imoveis, c.contrato.imovelId) }));
     },
     totalEncargos() { return this.aCobrarEncargos.reduce((s, c) => s + c.aCobrar, 0); },
+    naoRecebidoMes() { return this.cobrancas.reduce((s, c) => s + D.naoRecebido(c), 0); },
+    todas() { return D.todasCobrancas(this.db, this.db.contratos, app.indices); },
+    perdas() {
+      const cobs = this.todas.filter((x) => this.periodoPerdas === 'todos' || x.competencia.startsWith(this.periodoPerdas));
+      const porInq = new Map();
+      for (const x of cobs) {
+        const k = x.contrato.inquilinoId;
+        if (!porInq.has(k)) porInq.set(k, []);
+        porInq.get(k).push(x);
+      }
+      const linhas = [...porInq.entries()].map(([id, l]) => ({ inq: D.porId(this.db.inquilinos, id), r: D.resumoCobrancas(l) }))
+        .filter((x) => x.r.pagosComAtraso || x.r.emAberto).sort((a, b) => b.r.naoRecebido - a.r.naoRecebido);
+      return { total: D.resumoCobrancas(cobs), linhas };
+    },
     atrasos() {
       return D.cobrancasEmAtraso(this.db, app.indices).map((c) => ({
         ...c, inq: D.porId(this.db.inquilinos, c.contrato.inquilinoId), im: D.porId(this.db.imoveis, c.contrato.imovelId) }));
@@ -243,13 +257,14 @@ export const Financeiro = {
         const cobs = D.cobrancasDoMes(this.db, ym);
         const recebido = this.db.pagamentos.filter((p) => p.competencia === ym).reduce((s, p) => s + Number(p.valorPago), 0);
         const despesas = this.db.despesas.filter((d) => d.data?.slice(0, 7) === ym).reduce((s, d) => s + Number(d.valor), 0);
-        linhas.push({ ym, esperado: cobs.reduce((s, c) => s + c.valor, 0), recebido, despesas, liquido: recebido - despesas });
+        const naoRec = D.cobrancasDoMes(this.db, ym, app.indices).reduce((s, c) => s + D.naoRecebido(c), 0);
+        linhas.push({ ym, esperado: cobs.reduce((s, c) => s + c.valor, 0), recebido, despesas, liquido: recebido - despesas, naoRec });
       }
       return linhas;
     },
     totalAnual() {
       return this.resumoAnual.reduce((t, l) => ({ esperado: t.esperado + l.esperado, recebido: t.recebido + l.recebido,
-        despesas: t.despesas + l.despesas, liquido: t.liquido + l.liquido }), { esperado: 0, recebido: 0, despesas: 0, liquido: 0 });
+        despesas: t.despesas + l.despesas, liquido: t.liquido + l.liquido, naoRec: t.naoRec + l.naoRec }), { esperado: 0, recebido: 0, despesas: 0, liquido: 0, naoRec: 0 });
     },
     maxAnual() { return Math.max(1, ...this.resumoAnual.map((l) => Math.max(l.esperado, l.recebido))); },
   },
@@ -297,6 +312,7 @@ export const Financeiro = {
       <Kpi rotulo="A receber" :valor="fmtMoeda(Math.max(0, esperado - recebido))" :tom="cobrancas.some(c => c.status === 'atrasado') ? 'ruim' : ''" />
       <Kpi rotulo="Despesas" :valor="fmtMoeda(totalDespesas)" />
       <Kpi rotulo="Resultado do mês" :valor="fmtMoeda(recebido - totalDespesas)" />
+      <Kpi rotulo="Multa/juros não recebidos" :valor="fmtMoeda(naoRecebidoMes)" sub="no mês, pela regra dos contratos" :tom="naoRecebidoMes > 0 ? 'ruim' : ''" />
     </div>
 
     <div class="cartao">
@@ -353,6 +369,28 @@ export const Financeiro = {
     </div>
 
     <div class="cartao">
+      <div class="cab-cartao"><h2>Multas e juros que deixei de receber</h2>
+        <select v-model="periodoPerdas" aria-label="Período"><option value="todos">Todo o período</option><option v-for="a in anos" :value="a">{{ a }}</option></select></div>
+      <div class="kpis compactos">
+        <div class="kpi"><span class="kpi-rotulo">Devido pela regra dos contratos</span><strong>{{ fmtMoeda(perdas.total.encargosDevidos) }}</strong><small>{{ perdas.total.pagosComAtraso }} pagamento(s) com atraso</small></div>
+        <div class="kpi bom"><span class="kpi-rotulo">Cobrado</span><strong>{{ fmtMoeda(perdas.total.encargosCobrados) }}</strong></div>
+        <div class="kpi ruim"><span class="kpi-rotulo">Deixei de receber</span><strong>{{ fmtMoeda(perdas.total.naoRecebido) }}</strong>
+          <small>{{ fmtMoeda(perdas.total.pendenteCobranca) }} ainda cobrável · {{ fmtMoeda(perdas.total.dispensado) }} dispensado</small></div>
+        <div class="kpi"><span class="kpi-rotulo">Pontualidade</span><strong>{{ perdas.total.pontualidade ?? '—' }}{{ perdas.total.pontualidade != null ? '%' : '' }}</strong><small>atraso médio {{ perdas.total.atrasoMedio }} dia(s)</small></div>
+      </div>
+      <p v-if="!perdas.linhas.length" class="vazio">Nenhum pagamento com atraso registrado no período.</p>
+      <table v-else class="tabela">
+        <thead><tr><th>Inquilino</th><th class="num">Pagos com atraso</th><th class="num">Atraso médio</th><th class="num">Devido</th><th class="num">Cobrado</th><th class="num">Deixei de receber</th><th class="num">Em aberto hoje</th></tr></thead>
+        <tbody><tr v-for="x in perdas.linhas" :key="x.inq?.id" class="clicavel" @click="ir('#/historico?inquilino=' + x.inq?.id)">
+          <td>{{ x.inq?.nome }}</td><td class="num">{{ x.r.pagosComAtraso }} de {{ x.r.pagos }}</td><td class="num">{{ x.r.atrasoMedio }} dia(s)</td>
+          <td class="num">{{ fmtMoeda(x.r.encargosDevidos) }}</td><td class="num">{{ fmtMoeda(x.r.encargosCobrados) }}</td>
+          <td class="num"><b :class="{ 'texto-ruim': x.r.naoRecebido > 0 }">{{ fmtMoeda(x.r.naoRecebido) }}</b></td>
+          <td class="num">{{ x.r.emAberto ? fmtMoeda(x.r.valorEmAberto) + ' + ' + fmtMoeda(x.r.encargosEmAberto) : '—' }}</td></tr></tbody>
+      </table>
+      <p class="dica">Calculado a partir das datas e valores de pagamento lançados: multa, juros e correção previstos em cada contrato, menos o que foi efetivamente cobrado. Clique num inquilino para ver o histórico completo.</p>
+    </div>
+
+    <div class="cartao">
       <div class="cab-cartao"><h2>Despesas de {{ fmtMesLongo(ym) }}</h2><button class="pequeno" @click="novaDespesa">+ Despesa</button></div>
       <p v-if="!despesasMes.length" class="vazio">Nenhuma despesa lançada neste mês.</p>
       <table v-else class="tabela">
@@ -366,14 +404,14 @@ export const Financeiro = {
       <div class="cab-cartao"><h2>Resumo anual</h2>
         <select v-model="ano" aria-label="Ano"><option v-for="a in anos">{{ a }}</option></select></div>
       <table class="tabela">
-        <thead><tr><th>Mês</th><th class="num">Esperado</th><th class="num">Recebido</th><th class="num">Despesas</th><th class="num">Líquido</th><th class="barra-col"></th></tr></thead>
+        <thead><tr><th>Mês</th><th class="num">Esperado</th><th class="num">Recebido</th><th class="num">Despesas</th><th class="num">Líquido</th><th class="num">Multa/juros não recebidos</th><th class="barra-col"></th></tr></thead>
         <tbody><tr v-for="l in resumoAnual" :key="l.ym" class="clicavel" @click="ym = l.ym">
           <td>{{ fmtMes(l.ym) }}</td><td class="num">{{ fmtMoeda(l.esperado) }}</td><td class="num">{{ fmtMoeda(l.recebido) }}</td>
-          <td class="num">{{ fmtMoeda(l.despesas) }}</td><td class="num">{{ fmtMoeda(l.liquido) }}</td>
+          <td class="num">{{ fmtMoeda(l.despesas) }}</td><td class="num">{{ fmtMoeda(l.liquido) }}</td><td class="num" :class="{ 'texto-ruim': l.naoRec > 0 }">{{ l.naoRec ? fmtMoeda(l.naoRec) : '—' }}</td>
           <td class="barra-col"><span class="barra fantasma" :style="{ width: l.esperado / maxAnual * 100 + '%' }"><span class="barra" :style="{ width: (l.esperado ? Math.min(100, l.recebido / l.esperado * 100) : 0) + '%' }"></span></span></td>
         </tr></tbody>
         <tfoot><tr><td>Total</td><td class="num">{{ fmtMoeda(totalAnual.esperado) }}</td><td class="num">{{ fmtMoeda(totalAnual.recebido) }}</td>
-          <td class="num">{{ fmtMoeda(totalAnual.despesas) }}</td><td class="num">{{ fmtMoeda(totalAnual.liquido) }}</td><td></td></tr></tfoot>
+          <td class="num">{{ fmtMoeda(totalAnual.despesas) }}</td><td class="num">{{ fmtMoeda(totalAnual.liquido) }}</td><td class="num">{{ fmtMoeda(totalAnual.naoRec) }}</td><td></td></tr></tfoot>
       </table>
     </div>
 

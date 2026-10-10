@@ -2,6 +2,7 @@ import { app, db, helpers, Chip, Modal, avisar, ir, imprimir } from './comum.js'
 import { gerarContratoDocx, gerarNotificacaoDocx, gerarReciboDocx, gerarVistoriaDocx, gerarAditivoDocx, blocosVistoria, pastaDoContrato } from './acoes.js';
 import { VistoriaModal, AditivoModal } from './vistoria.js';
 import { Anexos } from './anexos.js';
+import { MoverArquivosModal } from './pastas.js';
 import { INDICES } from '../indices.js';
 import { InquilinoForm, inquilinoVazio, validarInquilino } from './inquilinos.js';
 import { PagamentoModal, HistoricoModal } from './financeiro.js';
@@ -322,10 +323,10 @@ export const ContratoForm = {
 
 // ---------------------------------------------------------------------------
 export const ContratoDetalhe = {
-  components: { Chip, Modal, PagamentoModal, HistoricoModal, VistoriaModal, AditivoModal, Anexos },
+  components: { Chip, Modal, PagamentoModal, HistoricoModal, VistoriaModal, AditivoModal, Anexos, MoverArquivosModal },
   props: { id: String },
   setup() { return { app, ...helpers }; },
-  data() { return { encerrar: null, pagamento: null, ocupado: false, vistoria: null, aditivo: false, historico: false, verTodos: false }; },
+  data() { return { encerrar: null, pagamento: null, ocupado: false, vistoria: null, aditivo: false, historico: false, verTodos: false, moverArquivos: false }; },
   computed: {
     db,
     c() { return D.porId(this.db.contratos, this.id); },
@@ -408,6 +409,7 @@ export const ContratoDetalhe = {
       });
       this.encerrar = null;
       avisar('Contrato encerrado.');
+      if (app.modo === 'onedrive') this.moverArquivos = true;
     },
     reativar() {
       const cid = this.c.id;
@@ -416,6 +418,7 @@ export const ContratoDetalhe = {
         c.status = 'ativo'; delete c.dataEncerramento;
         const im = D.porId(d.imoveis, c.imovelId); if (im) im.situacao = 'Alugado';
       });
+      if (app.modo === 'onedrive') this.moverArquivos = true;
     },
     adicionarAnexos(novos) {
       const cid = this.c.id;
@@ -570,6 +573,7 @@ export const ContratoDetalhe = {
     <p class="rodape-acoes">
       <button v-if="c.status === 'ativo'" @click="abrirEncerrar">Encerrar / simular rescisão</button>
       <button v-else @click="reativar">Reativar contrato</button>
+      <button v-if="app.modo === 'onedrive'" @click="moverArquivos = true">Atualizar pastas</button>
       <button class="perigo" @click="excluir">Excluir</button>
       <small v-if="c.dataEncerramento">Encerrado em {{ fmtData(c.dataEncerramento) }} {{ c.motivoEncerramento ? '— ' + c.motivoEncerramento : '' }}{{ c.multaRescisoria ? ' · multa ' + fmtMoeda(c.multaRescisoria) : '' }}</small>
     </p>
@@ -591,11 +595,12 @@ export const ContratoDetalhe = {
           <label class="c3 check"><input type="checkbox" v-model="encerrar.isentar"> Isentar (ex.: fim do prazo, acordo, transferência pelo empregador — art. 4º, parágrafo único)</label>
         </div>
       </div>
-      <p class="dica">O imóvel volta a ficar “Vago” se não houver outro contrato ativo nele. Pagamentos até o mês de encerramento continuam sendo cobrados. Para só simular, feche esta janela.</p>
+      <p class="dica">O imóvel volta a ficar “Vago” se não houver outro contrato ativo nele. Pagamentos até o mês de encerramento continuam sendo cobrados. Em seguida, o sistema oferece mover os arquivos do contrato de <code>contratos/Vigentes</code> para <code>contratos/Encerrados</code>. Para só simular, feche esta janela.</p>
       <template #rodape><button @click="encerrar = null">Cancelar</button><button class="primario" @click="confirmarEncerramento">Encerrar</button></template>
     </Modal>
     <PagamentoModal v-if="pagamento" :cobranca="pagamento" @fechar="pagamento = null" />
     <HistoricoModal v-if="historico" :contrato="c" @fechar="historico = false" />
+    <MoverArquivosModal v-if="moverArquivos" :contrato="c" @fechar="moverArquivos = false" />
     <VistoriaModal v-if="vistoria" :contrato="c" :vistoria="vistoria.id ? vistoria : null" @fechar="vistoria = null" />
     <AditivoModal v-if="aditivo" :contrato="c" @fechar="aditivo = false" />
   </section>

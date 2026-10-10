@@ -36,6 +36,8 @@ export const helpers = {
   proximoReajuste: D.proximoReajuste,
   fimContrato: D.fimContrato,
   porId: D.porId,
+  situacaoImovel: D.situacaoImovel,
+  naoRecebido: D.naoRecebido,
   ir,
 };
 
