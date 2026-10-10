@@ -94,6 +94,8 @@ marcando “Contrato já em andamento” para locações antigas.
   (dinheiro, cheques ou bens), seguro-fiança, título de capitalização, aluguel antecipado (art. 42) ou nenhuma.
 - **Encerrar contrato:** ao encerrar (ou reativar), o sistema oferece mover os arquivos do contrato entre
   `contratos\Vigentes` e `contratos\Encerrados`. Em Documentos → "Atualizar pastas", ele confere todas as pastas de uma vez.
+- **Planilha de pagamentos:** `Imobiliaria\Pagamentos 2026.xlsx` tem uma linha por contrato e por mês. Preencha a data e o valor
+  pagos, e importe em Financeiro → "Importar planilha de pagamentos". Pode reimportar quantas vezes quiser, sem duplicar.
 - **Histórico de pagamentos:** no contrato, use "Lançar histórico de pagamentos". O sistema mostra, mês a mês, a multa,
   os juros e a correção devidos pela regra do contrato (por padrão, multa de 10% e, acima de 30 dias de atraso, juros
   de 1% a.m. e correção).

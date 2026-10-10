@@ -1,5 +1,6 @@
 import { app, db, helpers, Chip, Modal, Kpi, avisar } from './comum.js';
 import { gerarReciboDocx } from './acoes.js';
+import { ImportarModal } from './importar.js';
 import * as D from '../db.js';
 import { novoId, hojeISO, mesAtual, somaMeses, arred2 } from '../util.js';
 
@@ -205,9 +206,9 @@ export const DespesaModal = {
 };
 
 export const Financeiro = {
-  components: { Chip, Kpi, PagamentoModal, DespesaModal },
+  components: { Chip, Kpi, PagamentoModal, DespesaModal, ImportarModal },
   setup() { return { app, ...helpers }; },
-  data() { return { ym: mesAtual(), pagamento: null, despesa: null, ano: mesAtual().slice(0, 4), selecionados: [], dataLote: hojeISO(), periodoPerdas: mesAtual().slice(0, 4) }; },
+  data() { return { ym: mesAtual(), pagamento: null, despesa: null, ano: mesAtual().slice(0, 4), selecionados: [], dataLote: hojeISO(), periodoPerdas: mesAtual().slice(0, 4), importar: false }; },
   computed: {
     db,
     cobrancas() {
@@ -299,11 +300,12 @@ export const Financeiro = {
   <section>
     <div class="titulo-pagina">
       <h1>Financeiro</h1>
+      <div class="acoes"><button @click="importar = true">Importar planilha de pagamentos</button>
       <div class="seletor-mes">
         <button class="icone" @click="mes(-1)" aria-label="Mês anterior">‹</button>
         <input type="month" v-model="ym" aria-label="Competência">
         <button class="icone" @click="mes(1)" aria-label="Próximo mês">›</button>
-      </div>
+      </div></div>
     </div>
 
     <div class="kpis">
@@ -417,5 +419,6 @@ export const Financeiro = {
 
     <PagamentoModal v-if="pagamento" :cobranca="pagamento" @fechar="pagamento = null" />
     <DespesaModal v-if="despesa" :despesa="despesa" @fechar="despesa = null" />
+    <ImportarModal v-if="importar" @fechar="importar = false" />
   </section>`,
 };
