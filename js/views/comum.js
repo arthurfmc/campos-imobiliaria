@@ -40,8 +40,9 @@ export const helpers = {
 };
 
 // Gera um .docx, salva no OneDrive (pasta indicada) e baixa no computador.
+// `blocos` pode ser a lista de blocos ou um Blob já pronto (modelo do Word preenchido).
 export async function gerarDocx(blocos, nome, subpasta) {
-  const blob = await paraDocx(blocos);
+  const blob = blocos instanceof Blob ? blocos : await paraDocx(blocos);
   let webUrl = null;
   let nomeFinal = nome;
   if (app.modo === 'onedrive') {

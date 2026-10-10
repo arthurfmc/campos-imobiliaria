@@ -192,6 +192,20 @@ export class GraphStorage {
     return resp.json();
   }
 
+  // Lê um arquivo pela posição na pasta (ex.: modelos/Modelo - ....docx). Retorna null se não existir.
+  async lerArquivo(rel) {
+    const meta = await this.getJson(this.item(rel));
+    if (!meta) return null;
+    const r = await fetch(meta['@microsoft.graph.downloadUrl'], { cache: 'no-store' });
+    if (!r.ok) throw new Error(`OneDrive: falha ao baixar ${rel} (${r.status})`);
+    return r.blob();
+  }
+
+  async infoArquivo(rel) {
+    const meta = await this.getJson(this.item(rel));
+    return meta ? { webUrl: meta.webUrl, modificadoEm: meta.lastModifiedDateTime, modificadoPor: meta.lastModifiedBy?.user?.displayName || '' } : null;
+  }
+
   // Baixa o conteúdo de um arquivo salvo (ex.: fotos para o termo de vistoria).
   async baixarArquivo(id) {
     const meta = await this.getJson(`/drives/${this.pasta.driveId}/items/${id}`);
@@ -231,10 +245,14 @@ export class MemoryStorage {
   async gravarArquivo(rel, blob) {
     const url = URL.createObjectURL(blob);
     this.urls ||= new Map();
+    this.porCaminho ||= new Map();
     const id = `mem-${this.urls.size + 1}`;
     this.urls.set(id, url);
+    this.porCaminho.set(rel, { blob, webUrl: url, modificadoEm: new Date().toISOString() });
     return { webUrl: url, nome: rel.split('/').pop(), id };
   }
+  async lerArquivo(rel) { return this.porCaminho?.get(rel)?.blob || null; }
+  async infoArquivo(rel) { const a = this.porCaminho?.get(rel); return a ? { webUrl: a.webUrl, modificadoEm: a.modificadoEm, modificadoPor: '' } : null; }
   async miniatura(id) { return this.urls?.get(id) || null; }
   async baixarArquivo(id) { return (await fetch(this.urls.get(id))).blob(); }
 }

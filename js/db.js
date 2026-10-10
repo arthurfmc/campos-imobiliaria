@@ -11,8 +11,8 @@ export function dbVazio() {
     versao: VERSAO_DB,
     config: {
       locador: { nome: '', nacionalidade: 'brasileiro', estadoCivil: '', profissao: '', cpf: '', rg: '', endereco: '', email: '', telefone: '' },
-      foro: '', multaAtrasoPct: 10, jurosMesPct: 1, multaRescisoriaAlugueis: 3, naoAplicarIndiceNegativo: true,
-      reajusteAutomatico: false,
+      foro: '', multaAtrasoPct: 10, jurosMesPct: 1, jurosAposDias: 30, correcaoMonetaria: true,
+      multaRescisoriaAlugueis: 3, naoAplicarIndiceNegativo: true, reajusteAutomatico: false,
     },
     proprietarios: [], imoveis: [], inquilinos: [], contratos: [], pagamentos: [], despesas: [], log: [],
   };
@@ -55,8 +55,65 @@ function normalizar(db) {
   for (const q of db.inquilinos) q.ocorrencias ||= [];
   for (const c of db.contratos) {
     c.reajustes ||= []; c.documentos ||= []; c.anexos ||= []; c.aditivos ||= []; c.vistorias ||= [];
+    c.garantia = normalizarGarantia(c.garantia);
+    c.atraso ||= regrasAtrasoPadrao(db.config, c);
   }
   return db;
+}
+
+export function fiadorVazio() {
+  return { nome: '', cpf: '', rg: '', nacionalidade: 'brasileiro(a)', estadoCivil: '', profissao: '', endereco: '',
+    telefone: '', email: '', conjugeNome: '', conjugeCpf: '' };
+}
+
+// Garantia: tipo único (a Lei 8.245/91, art. 37, parágrafo único, veda mais de uma modalidade),
+// mas com quantos fiadores forem necessários.
+export function normalizarGarantia(g) {
+  g = { tipo: 'nenhuma', vencimento: '', fiadores: [], caucaoModalidade: 'dinheiro', caucaoValor: 0, caucaoDescricao: '',
+    seguradora: '', apolice: '', instituicao: '', numeroTitulo: '', valorTitulo: 0, mesesAntecipados: 0, ...(g || {}) };
+  if (!g.fiadores.length && g.fiadorNome) {
+    // Formato antigo (um campo de texto): "A e B; C e D" vira uma lista.
+    const nomes = g.fiadorNome.split(/;|\s+e\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/).map((n) => n.trim()).filter(Boolean);
+    g.fiadores = nomes.map((nome, k) => ({ ...fiadorVazio(), nome,
+      ...(k === 0 ? { cpf: g.fiadorCpf || '', rg: g.fiadorRg || '', estadoCivil: g.fiadorEstadoCivil || '', profissao: g.fiadorProfissao || '',
+        endereco: g.fiadorEndereco || '', nacionalidade: g.fiadorNacionalidade || 'brasileiro(a)', conjugeNome: g.fiadorConjuge || '' } : {}) }));
+  }
+  for (const k of ['fiadorNome', 'fiadorCpf', 'fiadorRg', 'fiadorEstadoCivil', 'fiadorProfissao', 'fiadorEndereco', 'fiadorNacionalidade', 'fiadorConjuge']) delete g[k];
+  g.fiadores = g.fiadores.map((f) => ({ ...fiadorVazio(), ...f }));
+  return g;
+}
+
+// Regras de atraso de cada contrato (multa, juros, correção).
+export function regrasAtrasoPadrao(cfg, c) {
+  const vaga = /garagem/i.test(`${c?.atividade} ${c?.unidade}`);
+  return { multaPct: Number(cfg.multaAtrasoPct ?? 10), jurosMesPct: vaga ? 0 : Number(cfg.jurosMesPct ?? 1),
+    jurosAposDias: Number(cfg.jurosAposDias ?? 30), correcao: vaga ? false : cfg.correcaoMonetaria !== false };
+}
+
+const dias = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+
+// Encargos de atraso de uma parcela, pela regra do contrato.
+// Multa sempre que pago após o vencimento; juros (pro rata) e correção só se o atraso passar de `jurosAposDias`.
+export function calcularEncargos(c, valor, vencimento, dataRef, indices) {
+  const r = c.atraso || { multaPct: 10, jurosMesPct: 1, jurosAposDias: 30, correcao: true };
+  const d = Math.max(0, dias(vencimento, dataRef));
+  const vazio = { dias: d, correcao: 0, multa: 0, juros: 0, total: 0, base: valor, regra: r };
+  if (!d || !valor) return vazio;
+  const longo = d > Number(r.jurosAposDias || 0);
+  let fator = 1;
+  if (longo && r.correcao && indices?.[c.indice]) {
+    const mapa = indices[c.indice];
+    for (let ym = vencimento.slice(0, 7); ym < dataRef.slice(0, 7); ym = somaMeses(ym, 1)) {
+      if (mapa[ym] !== undefined) fator *= 1 + mapa[ym] / 100;
+    }
+    fator = Math.max(1, fator);
+  }
+  const base = valor * fator;
+  const correcao = base - valor;
+  const multa = base * Number(r.multaPct || 0) / 100;
+  const juros = longo ? base * Number(r.jurosMesPct || 0) / 100 / 30 * d : 0;
+  const arr = (x) => Math.round(x * 100) / 100;
+  return { dias: d, correcao: arr(correcao), multa: arr(multa), juros: arr(juros), total: arr(correcao + multa + juros), base: arr(base), regra: r };
 }
 
 // ---------------------------------------------------------------------------
@@ -206,12 +263,14 @@ export function proximoReajuste(c) {
 }
 
 // Cobranças esperadas de uma competência para todos os contratos ativos.
-export function cobrancasDoMes(db, ym) {
+export function cobrancasDoMes(db, ym, indices = null) {
   const res = [];
+  const hoje = hojeISO();
   for (const c of db.contratos) {
     if (c.status === 'cancelado') continue;
     const inicio = c.controleDesde || c.dataInicio?.slice(0, 7);
     if (!inicio || ym < inicio) continue;
+    if (c.dataInicio && ym < c.dataInicio.slice(0, 7)) continue;
     const fim = c.status === 'encerrado' ? (c.dataEncerramento || fimContrato(c)).slice(0, 7) : null;
     if (fim && ym > fim) continue;
     const pagamento = db.pagamentos.find((p) => p.contratoId === c.id && p.competencia === ym);
@@ -219,13 +278,18 @@ export function cobrancasDoMes(db, ym) {
     const valor = valorVigente(c, ym);
     let status = 'aberto';
     if (pagamento) status = Number(pagamento.valorPago) + (Number(pagamento.descontos) || 0) + 0.009 >= valor ? 'pago' : 'parcial';
-    else if (venc < hojeISO()) status = 'atrasado';
-    res.push({ contrato: c, competencia: ym, vencimento: venc, valor, pagamento, status });
+    else if (venc < hoje) status = 'atrasado';
+    // Encargos devidos: no dia do pagamento (se pago) ou atualizados até hoje (se em aberto).
+    const encargos = calcularEncargos(c, valor, venc, pagamento?.dataPagamento || hoje, indices);
+    const cobrado = Number(pagamento?.acrescimos) || 0;
+    const aCobrar = pagamento ? Math.max(0, Math.round((encargos.total - cobrado - (Number(pagamento.encargosDispensados) || 0)) * 100) / 100) : encargos.total;
+    res.push({ contrato: c, competencia: ym, vencimento: venc, valor, pagamento, status, encargos, aCobrar,
+      pagoComAtraso: !!pagamento && pagamento.dataPagamento > venc });
   }
   return res.sort((a, b) => a.vencimento.localeCompare(b.vencimento));
 }
 
-export function cobrancasEmAtraso(db) {
+export function cobrancasEmAtraso(db, indices = null) {
   const hoje = mesAtual();
   const res = [];
   for (const c of db.contratos) {
@@ -233,12 +297,24 @@ export function cobrancasEmAtraso(db) {
     const inicio = c.controleDesde || c.dataInicio?.slice(0, 7);
     if (!inicio) continue;
     for (let ym = inicio; ym <= hoje; ym = somaMeses(ym, 1)) {
-      for (const cob of cobrancasDoMes({ ...db, contratos: [c] }, ym)) {
+      for (const cob of cobrancasDoMes({ ...db, contratos: [c] }, ym, indices)) {
         if (cob.status === 'atrasado' || (cob.status === 'parcial' && cob.vencimento < hojeISO())) res.push(cob);
       }
     }
   }
   return res;
+}
+
+// Pagamentos feitos com atraso em que a multa/juros cobrados ficaram abaixo do devido.
+export function encargosNaoCobrados(db, indices = null) {
+  const res = [];
+  for (const p of db.pagamentos) {
+    const c = porId(db.contratos, p.contratoId);
+    if (!c) continue;
+    const [cob] = cobrancasDoMes({ ...db, contratos: [c], pagamentos: [p] }, p.competencia, indices);
+    if (cob && cob.pagoComAtraso && cob.aCobrar > 0.009) res.push(cob);
+  }
+  return res.sort((a, b) => b.competencia.localeCompare(a.competencia));
 }
 
 export function situacaoImovel(db, imovel) {

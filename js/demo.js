@@ -42,7 +42,7 @@ export function dadosDemo() {
     return { id, imovelId, inquilinoId, unidade: '', finalidade, atividade: finalidade === 'comercial' ? 'farmácia' : '',
       dataInicio: inicio, prazoMeses: 36, dataFim: '', diaVencimento: 10, valorInicial: valor, indice, periodicidadeMeses: 12,
       formaPagamento: 'PIX', dadosBancarios: '', encargos: { iptu: true, condominio: false, agua: true, luz: true, seguro: false },
-      garantia: { tipo: 'fiador', fiadorNome: 'Pedro Fiador Exemplo', fiadorCpf: '111.444.777-35' },
+      garantia: { tipo: 'fiador', fiadores: [{ nome: 'Pedro Fiador Exemplo', cpf: '111.444.777-35', estadoCivil: 'casado', conjugeNome: 'Ana Fiadora Exemplo' }] },
       controleDesde: somaMeses(mesAtual(), -3), dataAssinatura: inicio, clausulasAdicionais: '', observacoes: '',
       status: 'ativo', reajustes: [], documentos: [] };
   };

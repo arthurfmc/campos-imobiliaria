@@ -13,6 +13,7 @@ import { ContratosLista, ContratoForm, ContratoDetalhe } from './views/contratos
 import { Financeiro } from './views/financeiro.js';
 import { Reajustes } from './views/reajustes.js';
 import { Configuracoes } from './views/configuracoes.js';
+import { Documentos } from './views/documentosView.js';
 
 const { createApp, markRaw, reactive } = Vue;
 
@@ -29,12 +30,13 @@ const ROTAS = [
   [/^contrato\/([^/]+)$/, ContratoDetalhe],
   [/^financeiro$/, Financeiro],
   [/^reajustes$/, Reajustes],
+  [/^documentos$/, Documentos],
   [/^config$/, Configuracoes],
 ];
 
 const MENU = [
   ['painel', 'Painel', '◧'], ['imoveis', 'Imóveis', '⌂'], ['inquilinos', 'Inquilinos', '☺'],
-  ['contratos', 'Contratos', '▤'], ['financeiro', 'Financeiro', '$'], ['reajustes', 'Reajustes', '%'], ['config', 'Configurações', '⚙'],
+  ['contratos', 'Contratos', '▤'], ['financeiro', 'Financeiro', '$'], ['reajustes', 'Reajustes', '%'], ['documentos', 'Documentos', '▦'], ['config', 'Configurações', '⚙'],
 ];
 
 function lerRota() {

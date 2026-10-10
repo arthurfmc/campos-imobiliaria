@@ -2,15 +2,41 @@
 import { app, db, avisar, gerarDocx, CONFIG } from './comum.js';
 import * as D from '../db.js';
 import {
-  contratoBlocos, nomeArquivoContrato, notificacaoBlocos, nomeArquivoNotificacao, reciboBlocos, nomeArquivoRecibo,
-  aditivoBlocos, nomeArquivoAditivo, vistoriaBlocos, nomeArquivoVistoria,
+  nomeArquivoContrato, notificacaoBlocos, nomeArquivoNotificacao, reciboBlocos, nomeArquivoRecibo,
+  aditivoBlocos, nomeArquivoAditivo, nomeArquivoVistoria, paraDocx,
 } from '../documentos.js';
+import {
+  MODELOS, modeloContrato, dadosContrato, modeloVistoria, dadosVistoria, preencher, preencherModeloWord, chaveModeloVistoria,
+} from '../modelos.js';
+
+export const caminhoModelo = (chave) => `${CONFIG.pastaModelos}/${MODELOS[chave].arquivo}`;
+
+// Usa o modelo editado no Word (pasta modelos) se existir; senão, o texto padrão do sistema.
+async function montarDocumento(chave, dados, fotos = []) {
+  let modelo = null;
+  try { modelo = await app.storage.lerArquivo?.(caminhoModelo(chave)); } catch { /* sem modelo: usa o padrão */ }
+  if (modelo) {
+    try { return { blob: await preencherModeloWord(modelo, dados), usouModelo: true }; } catch (e) {
+      const det = e.properties?.errors?.map((x) => x.properties?.explanation).filter(Boolean).join('; ') || e.message;
+      throw new Error(`O modelo "${MODELOS[chave].arquivo}" tem um campo com erro: ${det}`);
+    }
+  }
+  return { blob: await paraDocx(preencher(MODELOS[chave].blocos(), dados, fotos)), usouModelo: false };
+}
+
+// Cria (ou restaura) no OneDrive o arquivo-modelo editável com os {campos}.
+export async function criarModeloWord(chave) {
+  const blob = await paraDocx(MODELOS[chave].blocos(), { modelo: true });
+  return app.storage.gravarArquivo(caminhoModelo(chave), blob, true);
+}
 import { periodoSugerido, calcularReajuste } from '../indices.js';
 import { nomeArquivo, somaMeses, mesAtual, hojeISO, novoId, fmtPct } from '../util.js';
 
 export async function gerarContratoDocx(contratoId) {
   const c = D.porId(db().contratos, contratoId);
-  const doc = await gerarDocx(contratoBlocos(db(), c), nomeArquivoContrato(db(), c), CONFIG.pastaContratos);
+  const { blob, usouModelo } = await montarDocumento('contrato', dadosContrato(db(), c));
+  const doc = await gerarDocx(blob, nomeArquivoContrato(db(), c), CONFIG.pastaContratos);
+  doc.modelo = usouModelo ? 'Modelo do Word' : 'Texto padrão';
   app.store.commit('Contrato gerado (.docx)', (d) => {
     const cc = D.porId(d.contratos, contratoId);
     (cc.documentos ||= []).unshift({ tipo: 'Contrato', ...doc });
@@ -61,15 +87,30 @@ export async function carregarFotos(anexos) {
   return fotos;
 }
 
-export async function blocosVistoria(c, vs) {
-  const entrada = vs.tipo === 'saida' ? (c.vistorias || []).filter((x) => x.tipo === 'entrada').sort((a, b) => b.data.localeCompare(a.data))[0] : null;
-  return vistoriaBlocos(db(), c, vs, await carregarFotos(vs.fotos || []), entrada);
+const vistoriaEntrada = (c, vs) => (vs.tipo === 'saida' ? (c.vistorias || []).filter((x) => x.tipo === 'entrada' && x.id !== vs.id).sort((a, b) => b.data.localeCompare(a.data))[0] : null);
+
+export async function blocosVistoria(c, vs, emBranco = false) {
+  return preencher(modeloVistoria(vs.tipo === 'saida'), dadosVistoria(db(), c, vs, vistoriaEntrada(c, vs), emBranco), emBranco ? [] : await carregarFotos(vs.fotos || []));
+}
+
+// Laudo em branco (para preencher à mão na visita), com os ambientes já listados.
+export async function gerarLaudoEmBrancoDocx(c, tipo, ambientes) {
+  const vs = { tipo, data: '', ambientes: ambientes.map((nome) => ({ nome })), fotos: [] };
+  const entrada = tipo === 'saida' ? vistoriaEntrada(c, vs) : null;
+  if (entrada) vs.ambientes = entrada.ambientes.map((a) => ({ nome: a.nome }));
+  const { blob } = await montarDocumento(chaveModeloVistoria(vs), dadosVistoria(db(), c, vs, entrada, true));
+  const q = D.porId(db().inquilinos, c.inquilinoId);
+  const nome = nomeArquivo(`Laudo de vistoria ${tipo === 'saida' ? 'de saída' : 'de entrada'} (em branco) - ${q?.nome || ''}.docx`);
+  await gerarDocx(blob, nome, CONFIG.pastaLaudos);
+  avisar('Laudo em branco gerado.');
 }
 
 export async function gerarVistoriaDocx(contratoId, vistoriaId) {
   const c = D.porId(db().contratos, contratoId);
   const vs = D.porId(c.vistorias, vistoriaId);
-  const doc = await gerarDocx(await blocosVistoria(c, vs), nomeArquivoVistoria(db(), c, vs), CONFIG.pastaLaudos);
+  const fotos = await carregarFotos(vs.fotos || []);
+  const { blob } = await montarDocumento(chaveModeloVistoria(vs), dadosVistoria(db(), c, vs, vistoriaEntrada(c, vs)), fotos);
+  const doc = await gerarDocx(blob, nomeArquivoVistoria(db(), c, vs), CONFIG.pastaLaudos);
   app.store.commit(`Termo de vistoria de ${vs.tipo} gerado`, (d) => {
     const cc = D.porId(d.contratos, contratoId);
     (cc.documentos ||= []).unshift({ tipo: `Vistoria de ${vs.tipo === 'saida' ? 'saída' : 'entrada'}`, ...doc });

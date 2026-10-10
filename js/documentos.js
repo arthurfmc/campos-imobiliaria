@@ -23,9 +23,9 @@ export function enderecoInquilino(q) {
   return partes.join(', ');
 }
 
-const v = (x, alt = '____________________') => (x && String(x).trim()) || alt;
+export const v = (x, alt = '____________________') => (x && String(x).trim()) || alt;
 
-function qualificacaoPF(p, { endereco }) {
+export function qualificacaoPF(p, { endereco }) {
   const itens = [`**${v(p.nome).toUpperCase()}**`, v(p.nacionalidade, 'brasileiro(a)'), v(p.estadoCivil, 'estado civil ______'),
     v(p.profissao, 'profissão ______'),
     `portador(a) da carteira de identidade nº ${v(p.rg)}${p.orgaoEmissor ? ` ${p.orgaoEmissor}` : ''}`,
@@ -35,7 +35,7 @@ function qualificacaoPF(p, { endereco }) {
   return itens.join(', ');
 }
 
-function qualificacaoInquilino(q) {
+export function qualificacaoInquilino(q) {
   const endereco = enderecoInquilino(q);
   if (q.tipo === 'PJ') {
     return `**${v(q.nome).toUpperCase()}**, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${v(fmtCpfCnpj(q.cpfCnpj))}, `
@@ -46,7 +46,7 @@ function qualificacaoInquilino(q) {
   return qualificacaoPF(q, { endereco });
 }
 
-function qualificacaoProprietario(p) {
+export function qualificacaoProprietario(p) {
   if (p.tipo === 'PJ') {
     return `**${v(p.nome).toUpperCase()}**, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${v(fmtCpfCnpj(p.cpf))}, `
       + `com sede em ${v(p.endereco)}, neste ato representada por ${v(p.representante)}, inscrito(a) no CPF sob o nº ${v(fmtCpfCnpj(p.representanteCpf))}`;
@@ -70,7 +70,7 @@ function blocoLocadores(db, c) {
 
 const assinaturasLocadores = (db, c) => locadoresDe(db, c).map((x) => ({ nome: v(x.p.nome), papel: 'LOCADOR' }));
 
-function descricaoImovel(i, c) {
+export function descricaoImovel(i, c) {
   const partes = [i.endereco || i.descricao];
   if (c.unidade) partes.push(`unidade: ${c.unidade}`);
   if (i.area) partes.push(`com área de ${String(i.area).replace('.', ',')} ${i.unidadeArea || 'm²'}`);
@@ -84,139 +84,9 @@ export function foroDe(db, c) {
   const i = porId(db.imoveis, c?.imovelId);
   return c?.foro || (i?.cidade ? `${i.cidade} - ${i.uf}` : db.config.foro) || '';
 }
-const cidadeDe = (foro) => (foro || '').split(/\s*[-/]\s*/)[0] || '________';
+export const cidadeDe = (foro) => (foro || '').split(/\s*[-/]\s*/)[0] || '________';
 
-// ---------- Contrato ----------
-export function contratoBlocos(db, c) {
-  const cfg = db.config;
-  const q = porId(db.inquilinos, c.inquilinoId) || {};
-  const i = porId(db.imoveis, c.imovelId) || {};
-  const g = c.garantia || { tipo: 'nenhuma' };
-  const comercial = c.finalidade !== 'residencial';
-  const indice = INDICES[c.indice]?.nome || c.indice;
-  const outroIndice = c.indice === 'IGP-M' ? 'IPCA (IBGE)' : 'IGP-M (FGV)';
-  const fim = fimContrato(c);
-  const prazo = Number(c.prazoMeses) || 0;
-  const per = Number(c.periodicidadeMeses) || 12;
-
-  const B = [];
-  const clausulas = [];
-  const cl = (titulo, ...paragrafos) => clausulas.push({ titulo, paragrafos: paragrafos.filter(Boolean) });
-
-  B.push({ t: 'titulo', texto: `CONTRATO DE LOCAÇÃO DE IMÓVEL ${comercial ? 'NÃO RESIDENCIAL' : 'RESIDENCIAL'}` });
-  B.push(...blocoLocadores(db, c));
-  B.push({ t: 'p', texto: `**LOCATÁRIO:** ${qualificacaoInquilino(q)}.` });
-  if (g.tipo === 'fiador') {
-    B.push({ t: 'p', texto: `**FIADOR:** ${qualificacaoPF({
-      nome: g.fiadorNome, nacionalidade: g.fiadorNacionalidade, estadoCivil: g.fiadorEstadoCivil,
-      profissao: g.fiadorProfissao, rg: g.fiadorRg, cpf: g.fiadorCpf,
-    }, { endereco: g.fiadorEndereco })}${g.fiadorConjuge ? `, e seu cônjuge ${g.fiadorConjuge}` : ''}.` });
-  }
-  B.push({ t: 'p', texto: 'As partes acima identificadas têm, entre si, justo e acertado o presente Contrato de Locação, que se regerá pela Lei nº 8.245, de 18 de outubro de 1991 (Lei do Inquilinato), pelo Código Civil e pelas cláusulas e condições seguintes:' });
-
-  cl('DO OBJETO',
-    `O LOCADOR dá em locação ao LOCATÁRIO o imóvel ${descricaoImovel(i, c)}, em perfeito estado de conservação, limpeza e funcionamento, conforme termo de vistoria que, assinado pelas partes, passa a integrar o presente contrato.`);
-
-  cl('DA DESTINAÇÃO',
-    comercial
-      ? `O imóvel destina-se exclusivamente a fins não residenciais, para o exercício da atividade de ${v(c.atividade, 'comércio')}, sendo vedada a alteração de sua destinação sem o consentimento prévio e por escrito do LOCADOR.`
-      : 'O imóvel destina-se exclusivamente à residência do LOCATÁRIO e de sua família, sendo vedada a alteração de sua destinação sem o consentimento prévio e por escrito do LOCADOR.',
-    comercial ? 'Parágrafo único. Cabe ao LOCATÁRIO obter, às suas expensas, todos os alvarás, licenças e autorizações necessários ao exercício de sua atividade, respondendo por eventuais multas e sanções decorrentes de sua falta.' : null);
-
-  cl('DO PRAZO',
-    `O prazo da locação é de ${prazo} (${inteiroExtenso(prazo)}) meses, com início em ${fmtData(c.dataInicio)} e término em ${fmtData(fim)}, data em que o LOCATÁRIO se obriga a restituir o imóvel livre e desocupado, nas condições em que o recebeu, independentemente de notificação ou interpelação judicial ou extrajudicial.`,
-    'Parágrafo único. Findo o prazo ajustado, se o LOCATÁRIO continuar na posse do imóvel por mais de 30 (trinta) dias sem oposição do LOCADOR, a locação será prorrogada por prazo indeterminado, mantidas as demais cláusulas deste contrato.');
-
-  cl('DO ALUGUEL',
-    `O aluguel mensal é de ${moedaExtenso(c.valorInicial)}, que deverá ser pago até o dia ${c.diaVencimento} (${inteiroExtenso(Number(c.diaVencimento))}) de cada mês${c.formaPagamento ? `, mediante ${c.formaPagamento}` : ''}${c.dadosBancarios ? ` (${c.dadosBancarios})` : ''}.`,
-    `Parágrafo primeiro. O pagamento efetuado após o vencimento sujeitará o LOCATÁRIO à multa moratória de ${cfg.multaAtrasoPct}% (${inteiroExtenso(Number(cfg.multaAtrasoPct))} por cento) sobre o valor devido, acrescida de juros de mora de ${cfg.jurosMesPct}% (${inteiroExtenso(Number(cfg.jurosMesPct))} por cento) ao mês, calculados pro rata die, e de correção monetária pelo índice previsto na cláusula de reajuste.`,
-    'Parágrafo segundo. O recebimento de aluguel ou encargos fora do prazo ou em condições diversas das aqui previstas constituirá mera tolerância do LOCADOR, não importando novação ou alteração das cláusulas deste contrato.');
-
-  cl('DO REAJUSTE',
-    `O aluguel será reajustado a cada ${per} (${inteiroExtenso(per)}) meses, contados do início da locação, pela variação acumulada do ${indice} nos ${per} (${inteiroExtenso(per)}) meses anteriores ao mês do reajuste, considerando-se os últimos índices divulgados.`,
-    `Parágrafo primeiro. Na hipótese de extinção, suspensão ou impossibilidade de aplicação do índice acima, será adotado o índice oficial que vier a substituí-lo ou, na sua falta, o ${outroIndice}.`,
-    cfg.naoAplicarIndiceNegativo ? 'Parágrafo segundo. Caso a variação acumulada do índice no período seja negativa, o valor do aluguel será mantido, sem redução.' : null,
-    'Parágrafo terceiro. O LOCADOR comunicará ao LOCATÁRIO, por escrito, o novo valor do aluguel e o mês a partir do qual será devido.');
-
-  const encargos = [];
-  const e = c.encargos || {};
-  if (e.iptu !== false) encargos.push('o Imposto Predial e Territorial Urbano (IPTU) e taxas que incidam ou venham a incidir sobre o imóvel');
-  if (e.condominio) encargos.push('as despesas ordinárias de condomínio');
-  if (e.agua !== false) encargos.push('o consumo de água e esgoto');
-  if (e.luz !== false) encargos.push('o consumo de energia elétrica e gás');
-  if (e.seguro) encargos.push('o seguro do imóvel contra incêndio');
-  cl('DOS ENCARGOS',
-    `Além do aluguel, correrão por conta do LOCATÁRIO, durante toda a locação: ${encargos.join('; ') || 'as despesas de consumo do imóvel'}, cujos comprovantes de pagamento deverão ser apresentados ao LOCADOR sempre que solicitados.`,
-    'Parágrafo único. Ao final da locação, o LOCATÁRIO deverá apresentar os comprovantes de quitação de todos os encargos até a data da efetiva entrega das chaves.');
-
-  cl('DA CONSERVAÇÃO E DAS BENFEITORIAS',
-    'O LOCATÁRIO obriga-se a conservar o imóvel e a realizar, às suas expensas, os reparos dos danos a que der causa, bem como a cumprir as posturas municipais, sanitárias e de segurança aplicáveis.',
-    'Parágrafo primeiro. Nenhuma obra, modificação ou benfeitoria poderá ser feita sem autorização prévia e por escrito do LOCADOR.',
-    'Parágrafo segundo. As benfeitorias, ainda que necessárias ou úteis, incorporar-se-ão ao imóvel, sem direito a indenização ou retenção, nos termos do art. 35 da Lei nº 8.245/1991, podendo o LOCADOR exigir que o imóvel seja restituído no estado original.',
-    comercial ? 'Parágrafo terceiro. A instalação de letreiros, placas e fachadas dependerá de autorização do LOCADOR e das autoridades competentes, devendo ser removida ao final da locação, com a recomposição do imóvel.' : null);
-
-  cl('DA CESSÃO, SUBLOCAÇÃO E EMPRÉSTIMO',
-    'É vedado ao LOCATÁRIO ceder, sublocar ou emprestar o imóvel, no todo ou em parte, bem como transferir este contrato, sem o consentimento prévio e por escrito do LOCADOR.');
-
-  cl('DA VISTORIA',
-    'O LOCADOR, ou pessoa por ele autorizada, poderá vistoriar o imóvel mediante combinação prévia de dia e hora com o LOCATÁRIO, bem como mostrá-lo a terceiros interessados na hipótese de venda ou de término da locação.');
-
-  if (g.tipo === 'fiador') {
-    cl('DA GARANTIA',
-      'Assina o presente contrato, na qualidade de FIADOR e principal pagador, solidariamente responsável com o LOCATÁRIO, a pessoa qualificada no preâmbulo, que responde por todas as obrigações deste contrato até a efetiva devolução das chaves e quitação de todos os débitos, ainda que a locação seja prorrogada por prazo indeterminado, nos termos do art. 39 da Lei nº 8.245/1991.',
-      'Parágrafo único. O FIADOR renuncia expressamente aos benefícios previstos nos arts. 827, 835 e 838 do Código Civil.');
-  } else if (g.tipo === 'caucao') {
-    cl('DA GARANTIA',
-      `Em garantia do cumprimento das obrigações deste contrato, o LOCATÁRIO entrega ao LOCADOR caução em dinheiro no valor de ${moedaExtenso(g.caucaoValor)}, não superior a 3 (três) aluguéis, nos termos do art. 38, § 2º, da Lei nº 8.245/1991.`,
-      'Parágrafo único. Finda a locação, e após a vistoria de saída e a comprovação da quitação de aluguéis e encargos, a caução será restituída ao LOCATÁRIO, deduzidos eventuais débitos.');
-  } else if (g.tipo === 'seguro') {
-    cl('DA GARANTIA',
-      `A locação é garantida por seguro de fiança locatícia${g.seguradora ? ` contratado junto à ${g.seguradora}` : ''}${g.apolice ? `, apólice nº ${g.apolice}` : ''}${g.vencimento ? `, com vigência até ${fmtData(g.vencimento)}` : ''}, cujo prêmio será pago pelo LOCATÁRIO, que se obriga a mantê-lo vigente durante toda a locação, renovando-o antes do vencimento.`);
-  } else if (g.tipo === 'titulo') {
-    cl('DA GARANTIA',
-      `Em garantia do cumprimento das obrigações deste contrato, o LOCATÁRIO cede ao LOCADOR, nos termos do art. 37, inciso IV, da Lei nº 8.245/1991, o título de capitalização${g.instituicao ? ` emitido por ${g.instituicao}` : ''}${g.numeroTitulo ? `, nº ${g.numeroTitulo}` : ''}, no valor de ${moedaExtenso(g.valorTitulo)}${g.vencimento ? `, com vencimento em ${fmtData(g.vencimento)}` : ''}.`,
-      'Parágrafo único. Havendo inadimplência, o LOCADOR poderá resgatar o título para quitação dos débitos. Finda a locação sem débitos, a cessão será desfeita em favor do LOCATÁRIO.');
-  } else {
-    cl('DA GARANTIA', 'A presente locação é celebrada sem qualquer das modalidades de garantia previstas no art. 37 da Lei nº 8.245/1991.');
-  }
-
-  cl('DA RESCISÃO E DA MULTA',
-    `A infração de qualquer cláusula deste contrato sujeitará a parte infratora ao pagamento de multa equivalente a ${cfg.multaRescisoriaAlugueis} (${inteiroExtenso(Number(cfg.multaRescisoriaAlugueis))}) aluguéis vigentes à época da infração, sem prejuízo da rescisão do contrato e da cobrança de perdas e danos.`,
-    'Parágrafo único. Caso o LOCATÁRIO devolva o imóvel antes do término do prazo contratual, pagará a multa prevista nesta cláusula de forma proporcional ao período de cumprimento do contrato, conforme o art. 4º da Lei nº 8.245/1991, mediante aviso prévio por escrito de, no mínimo, 30 (trinta) dias.');
-
-  cl('DA DEVOLUÇÃO DO IMÓVEL',
-    'Ao término da locação, o LOCATÁRIO restituirá o imóvel nas mesmas condições em que o recebeu, conforme o termo de vistoria, ressalvado o desgaste natural pelo uso normal, entregando as chaves mediante recibo. A locação somente será considerada encerrada após a vistoria final e a entrega das chaves.');
-
-  if (c.clausulasAdicionais?.trim()) {
-    cl('DISPOSIÇÕES ESPECIAIS', ...c.clausulasAdicionais.split(/\n\s*\n|\n/).map((s) => s.trim()).filter(Boolean));
-  }
-
-  cl('DAS DISPOSIÇÕES GERAIS',
-    'As comunicações entre as partes deverão ser feitas por escrito, admitindo-se o envio por e-mail ou aplicativo de mensagens para os contatos informados neste contrato.',
-    'Em caso de alienação do imóvel, o LOCATÁRIO terá direito de preferência na aquisição, nos termos dos arts. 27 a 34 da Lei nº 8.245/1991.');
-
-  cl('DO FORO',
-    `Fica eleito o foro da comarca de ${v(foroDe(db, c))} para dirimir quaisquer questões oriundas deste contrato, com renúncia a qualquer outro, por mais privilegiado que seja.`);
-
-  clausulas.forEach((c2, idx) => {
-    B.push({ t: 'clausula', texto: `CLÁUSULA ${ORDINAIS[idx] || idx + 1} – ${c2.titulo}` });
-    for (const p of c2.paragrafos) B.push({ t: 'p', texto: p });
-  });
-
-  B.push({ t: 'p', texto: 'E, por estarem assim justas e contratadas, as partes assinam o presente instrumento em 2 (duas) vias de igual teor e forma, na presença das testemunhas abaixo.' });
-  B.push({ t: 'local', texto: `${cidadeDe(foroDe(db, c))}, ${fmtDataExtenso(c.dataAssinatura || hojeISO())}.` });
-
-  const assin = [...assinaturasLocadores(db, c), { nome: v(q.nome), papel: 'LOCATÁRIO' }];
-  if (g.tipo === 'fiador') {
-    assin.push({ nome: v(g.fiadorNome), papel: 'FIADOR' });
-    if (g.fiadorConjuge) assin.push({ nome: g.fiadorConjuge, papel: 'CÔNJUGE DO FIADOR' });
-  }
-  assin.push({ nome: 'Nome:                     CPF:', papel: 'TESTEMUNHA 1' });
-  assin.push({ nome: 'Nome:                     CPF:', papel: 'TESTEMUNHA 2' });
-  B.push({ t: 'assinaturas', lista: assin });
-  return B;
-}
-
+// ---------- Contrato: o texto fica em modelos.js ----------
 export function nomeArquivoContrato(db, c) {
   const q = porId(db.inquilinos, c.inquilinoId);
   const i = porId(db.imoveis, c.imovelId);
@@ -303,7 +173,8 @@ function partesBasicas(db, c) {
   const q = porId(db.inquilinos, c.inquilinoId) || {};
   const g = c.garantia || {};
   const B = [...blocoLocadores(db, c), { t: 'p', texto: `**LOCATÁRIO:** ${qualificacaoInquilino(q)}.` }];
-  if (g.tipo === 'fiador' && g.fiadorNome) B.push({ t: 'p', texto: `**FIADOR (ANUENTE):** ${v(g.fiadorNome)}, CPF ${v(fmtCpfCnpj(g.fiadorCpf))}.` });
+  const fs = g.tipo === 'fiador' ? (g.fiadores || []).filter((f) => f.nome) : [];
+  if (fs.length) B.push({ t: 'p', texto: `**${fs.length > 1 ? 'FIADORES (ANUENTES)' : 'FIADOR (ANUENTE)'}:** ${fs.map((f) => `${f.nome}${f.cpf ? `, CPF ${fmtCpfCnpj(f.cpf)}` : ''}${f.conjugeNome ? `, e seu cônjuge ${f.conjugeNome}` : ''}`).join('; ')}.` });
   return B;
 }
 
@@ -311,7 +182,10 @@ function assinaturasPartes(db, c) {
   const q = porId(db.inquilinos, c.inquilinoId) || {};
   const g = c.garantia || {};
   const lista = [...assinaturasLocadores(db, c), { nome: v(q.nome), papel: 'LOCATÁRIO' }];
-  if (g.tipo === 'fiador' && g.fiadorNome) lista.push({ nome: g.fiadorNome, papel: 'FIADOR' });
+  for (const f of (g.tipo === 'fiador' ? g.fiadores || [] : []).filter((x) => x.nome)) {
+    lista.push({ nome: f.nome, papel: 'FIADOR' });
+    if (f.conjugeNome) lista.push({ nome: f.conjugeNome, papel: 'CÔNJUGE DO FIADOR' });
+  }
   return lista;
 }
 
@@ -328,7 +202,7 @@ export function aditivoBlocos(db, c, a) {
   }
   for (const t of (a.texto || '').split(/\n+/).map((x) => x.trim()).filter(Boolean)) cls.push(['DAS ALTERAÇÕES', t]);
   cls.push(['DA RATIFICAÇÃO', 'Ficam ratificadas todas as demais cláusulas e condições do contrato original que não tenham sido expressamente alteradas por este instrumento.']);
-  if (c.garantia?.tipo === 'fiador' && c.garantia.fiadorNome) {
+  if (c.garantia?.tipo === 'fiador' && c.garantia.fiadores?.some((f) => f.nome)) {
     cls.push(['DA ANUÊNCIA DO FIADOR', 'O FIADOR declara sua expressa anuência a este aditivo, permanecendo solidariamente responsável por todas as obrigações do contrato, inclusive as aqui ajustadas, até a efetiva entrega das chaves.']);
   }
   cls.forEach(([t, txt], k) => { B.push({ t: 'clausula', texto: `CLÁUSULA ${ORDINAIS[k]} – ${t}` }); B.push({ t: 'p', texto: txt }); });
@@ -344,53 +218,7 @@ export const nomeArquivoAditivo = (db, c, a) => {
   return nomeArquivo(`Aditivo ${a.numero} - Ref ${String(i?.ref ?? '').padStart(2, '0')} - ${q?.nome || ''} - ${a.data}.docx`);
 };
 
-// ---------- Termo de vistoria ----------
-// `fotos`: [{ data: Uint8Array, url, largura, altura, legenda }] já carregadas.
-export function vistoriaBlocos(db, c, vs, fotos = [], entrada = null) {
-  const q = porId(db.inquilinos, c.inquilinoId) || {};
-  const i = porId(db.imoveis, c.imovelId) || {};
-  const saida = vs.tipo === 'saida';
-  const B = [{ t: 'titulo', texto: `TERMO DE VISTORIA DE ${saida ? 'SAÍDA' : 'ENTRADA'}` }];
-  B.push({ t: 'tabela', cab: ['Item', 'Informação'], linhas: [
-    ['Imóvel', `${i.endereco || i.descricao}${c.unidade ? ` (${c.unidade})` : ''}`],
-    ['Locador(es)', locadoresDe(db, c).map((x) => x.p.nome).join(', ')],
-    ['Locatário', q.nome || '—'],
-    ['Contrato', `iniciado em ${fmtData(c.dataInicio)}`],
-    ['Data da vistoria', fmtData(vs.data)],
-    ...(vs.vistoriador ? [['Vistoriador', vs.vistoriador]] : []),
-  ] });
-  const leituras = [['Energia elétrica', vs.leituraEnergia, i.instalacaoEnergia], ['Água', vs.leituraAgua, i.instalacaoAgua], ['Gás', vs.leituraGas, '']]
-    .filter((l) => l[1]);
-  if (leituras.length || vs.chaves) {
-    B.push({ t: 'clausula', texto: 'LEITURAS E CHAVES' });
-    B.push({ t: 'tabela', cab: ['Item', 'Leitura / quantidade', 'Instalação nº'], linhas: [
-      ...leituras.map((l) => [l[0], String(l[1]), l[2] || '—']),
-      ...(vs.chaves ? [['Chaves entregues', String(vs.chaves), '']] : []),
-    ] });
-  }
-  B.push({ t: 'clausula', texto: 'ESTADO DO IMÓVEL POR AMBIENTE' });
-  const comparar = saida && entrada;
-  const cab = comparar ? ['Ambiente / item', 'Na entrada', 'Na saída', 'Observações'] : ['Ambiente / item', 'Estado', 'Observações'];
-  B.push({ t: 'tabela', cab, linhas: (vs.ambientes || []).filter((a) => a.nome).map((a) => {
-    if (comparar) {
-      const e = entrada.ambientes?.find((x) => x.nome === a.nome);
-      return [a.nome, e?.estado || '—', a.estado || '—', a.observacao || ''];
-    }
-    return [a.nome, a.estado || '—', a.observacao || ''];
-  }) });
-  if (vs.observacoes) { B.push({ t: 'clausula', texto: 'OBSERVAÇÕES' }); B.push({ t: 'p', texto: vs.observacoes }); }
-  B.push({ t: 'p', texto: saida
-    ? 'As partes declaram que o imóvel foi vistoriado na devolução e se encontra no estado acima descrito. Eventuais danos além do desgaste natural pelo uso normal serão de responsabilidade do LOCATÁRIO, conforme o contrato de locação.'
-    : 'O LOCATÁRIO declara ter vistoriado o imóvel e recebê-lo no estado acima descrito, comprometendo-se a devolvê-lo nas mesmas condições ao final da locação, ressalvado o desgaste natural pelo uso normal. Este termo é parte integrante do contrato de locação.' });
-  if (fotos.length) {
-    B.push({ t: 'clausula', texto: `REGISTRO FOTOGRÁFICO (${fotos.length} foto${fotos.length > 1 ? 's' : ''})` });
-    B.push({ t: 'imagens', lista: fotos });
-  }
-  B.push({ t: 'local', texto: `${cidadeDe(foroDe(db, c))}, ${fmtDataExtenso(vs.data || hojeISO())}.` });
-  B.push({ t: 'assinaturas', lista: [...assinaturasLocadores(db, c), { nome: v(q.nome), papel: 'LOCATÁRIO' }] });
-  return B;
-}
-
+// ---------- Laudo de vistoria: o texto fica em modelos.js ----------
 export const nomeArquivoVistoria = (db, c, vs) => {
   const q = porId(db.inquilinos, c.inquilinoId);
   const i = porId(db.imoveis, c.imovelId);
@@ -403,12 +231,24 @@ function partesNegrito(texto) {
     .map((s) => (s.startsWith('**') ? { texto: s.slice(2, -2), negrito: true } : { texto: s, negrito: false }));
 }
 
-export async function paraDocx(blocos) {
+// modelo = true: gera o arquivo-modelo editável, mantendo {campos}, {#condições} e {#repetições}.
+export async function paraDocx(blocos, { modelo = false } = {}) {
   const d = await import(DOCX_URL);
   const { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, ImageRun } = d;
   const runs = (t, extra = {}) => partesNegrito(t).map((p) => new TextRun({ text: p.texto, bold: p.negrito || extra.bold, size: extra.size }));
+  const marca = (texto) => new Paragraph({ children: [new TextRun({ text: texto })] });
   const filhos = [];
-  for (const b of blocos) {
+  for (const b0 of blocos) {
+    let b = b0;
+    if (modelo && b.se) filhos.push(marca(`{#${b.se}}`));
+    if (modelo && b.t === 'assinaturas') b = { ...b, lista: [{ nome: '{nome}', papel: '{papel}' }] };
+    if (modelo && b.t === 'tabela' && b.loop) {
+      const l = [...b.linha];
+      l[0] = `{#${b.loop}}${l[0]}`; l[l.length - 1] = `${l[l.length - 1]}{/${b.loop}}`;
+      b = { ...b, linhas: [l] };
+    }
+    if (modelo && b.t === 'imagens') continue;
+    if (modelo && b.t === 'assinaturas') filhos.push(marca(`{#${b0.loop}}`));
     if (b.t === 'titulo') {
       filhos.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 300, before: 200 },
         children: [new TextRun({ text: b.texto, bold: true, size: 26 })] }));
@@ -416,7 +256,9 @@ export async function paraDocx(blocos) {
       filhos.push(new Paragraph({ spacing: { before: 240, after: 120 }, keepNext: true,
         children: [new TextRun({ text: b.texto, bold: true })] }));
     } else if (b.t === 'p') {
-      filhos.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 140, line: 300 }, children: runs(b.texto) }));
+      for (const linha of (modelo ? [b.texto] : String(b.texto).split('\n'))) {
+        filhos.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 140, line: 300 }, children: runs(linha) }));
+      }
     } else if (b.t === 'local' || b.t === 'direita') {
       filhos.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 200, after: 300 }, children: runs(b.texto) }));
     } else if (b.t === 'tabela') {
@@ -447,6 +289,8 @@ export async function paraDocx(blocos) {
         filhos.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: a.papel, bold: true, size: 18 })] }));
       }
     }
+    if (modelo && b0.t === 'assinaturas') filhos.push(marca(`{/${b0.loop}}`));
+    if (modelo && b0.se) filhos.push(marca(`{/${b0.se}}`));
   }
   const doc = new Document({
     styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
@@ -462,7 +306,7 @@ export function paraHtml(blocos, titulo) {
   const corpo = blocos.map((b) => {
     if (b.t === 'titulo') return `<h1>${esc(b.texto)}</h1>`;
     if (b.t === 'clausula') return `<h2>${esc(b.texto)}</h2>`;
-    if (b.t === 'p') return `<p>${htmlRuns(b.texto)}</p>`;
+    if (b.t === 'p') return String(b.texto).split('\n').map((l) => `<p>${htmlRuns(l)}</p>`).join('');
     if (b.t === 'local' || b.t === 'direita') return `<p class="dir">${htmlRuns(b.texto)}</p>`;
     if (b.t === 'tabela') {
       return `<table class="${b.pequena ? 'peq' : ''}"><tr>${b.cab.map((c) => `<th>${esc(c)}</th>`).join('')}</tr>${

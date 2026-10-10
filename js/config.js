@@ -15,5 +15,6 @@ export const CONFIG = {
   pastaContratos: 'contratos/Vigentes',
   pastaNotificacoes: 'notificações',
   pastaLaudos: 'laudos',
+  pastaModelos: 'modelos',
   pastaRecibos: 'recibos',
 };

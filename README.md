@@ -18,6 +18,7 @@ OneDrive\Campos_Patrimonial\
 │   ├── contratos\Vigentes\      (contratos em vigor; o sistema gera os novos aqui)
 │   ├── contratos\Encerrados\    (contratos antigos)
 │   ├── contratos\Originais\     (arquivos como estavam antes da organização)
+│   ├── modelos\                 (modelos editáveis no Word: contrato e laudos de vistoria)
 │   ├── laudos\                  (laudos/termos de vistoria)
 │   ├── certidoes\               (certidões)
 │   ├── notificações\            (notificações extrajudiciais e de reajuste)
@@ -80,10 +81,19 @@ marcando “Contrato já em andamento” para locações antigas.
 | **Inquilinos** | Pessoa física ou jurídica, busca de CEP, validação de CPF/CNPJ, **histórico de pagamentos** e **ocorrências**. |
 | **Contratos → Nova locação** | Cadastra inquilino e contrato de uma vez e gera o contrato .docx. Locações antigas entram com "Contrato já em andamento". |
 | **Contrato (detalhe)** | Pagamentos, reajustes, **garantia com vencimento** (fiador, caução, seguro-fiança, título de capitalização), **termos aditivos**, **vistorias de entrada e saída com fotos**, **contrato assinado e anexos (PDF)** e **encerramento com cálculo da multa rescisória proporcional** (art. 4º da Lei 8.245/91). |
-| **Financeiro** | Aluguéis do mês, registro de pagamento com sugestão de multa e juros, recibos, despesas e resumo anual. |
+| **Financeiro** | Aluguéis do mês, registro individual ou em lote, multa/juros/correção calculados pela regra de cada contrato, lista de **multas e juros a cobrar**, recibos, despesas e resumo anual. |
+| **Documentos** | Gera contrato e laudos de vistoria de entrada e de saída (preenchidos ou em branco para a visita) e gerencia os **modelos editáveis no Word**. |
 | **Reajustes** | Calculadora com 5 índices (IGP-M, IPCA, INPC, IGP-DI, IPC-Fipe), **aplicação em lote**, reajuste automático opcional e notificações. |
 | **Configurações** | **Cadastro de proprietários** (dados pessoais e bancários/Pix para repasse), multas, juros, reajuste automático e histórico de alterações. |
 
+- **Modelos no Word:** em Documentos, clique em "Criar modelo para editar". O arquivo vai para `modelos\` no OneDrive.
+  Edite livremente no Word, mantendo os campos entre chaves, como `{locatario_nome}`. Daí em diante, o sistema usa o
+  seu modelo. "Restaurar padrão" volta ao texto original.
+- **Garantia:** uma modalidade por contrato (art. 37), que pode ser fiança com vários fiadores e cônjuges, caução
+  (dinheiro, cheques ou bens), seguro-fiança, título de capitalização, aluguel antecipado (art. 42) ou nenhuma.
+- **Histórico de pagamentos:** no contrato, use "Lançar histórico de pagamentos". O sistema mostra, mês a mês, a multa,
+  os juros e a correção devidos pela regra do contrato (por padrão, multa de 10% e, acima de 30 dias de atraso, juros
+  de 1% a.m. e correção).
 - Os índices vêm da API pública do Banco Central (séries 189 IGP-M e 433 IPCA).
 - Você e seu pai podem usar o sistema ao mesmo tempo. Se os dois salvarem juntos, o sistema relê o arquivo
   e reaplica as alterações, sem perder nada. O botão **↻ Atualizar** busca o que a outra pessoa fez.

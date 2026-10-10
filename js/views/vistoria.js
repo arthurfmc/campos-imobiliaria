@@ -6,22 +6,22 @@ import * as D from '../db.js';
 import { clone, novoId, hojeISO, mesAtual, somaMesesData, diaMenos1, arred2 } from '../util.js';
 
 const ESTADOS = ['Novo', 'Bom', 'Regular', 'Ruim', 'Não se aplica'];
-const AMB_COMERCIAL = ['Fachada / porta de enrolar', 'Piso', 'Paredes e pintura', 'Teto / forro', 'Iluminação e tomadas',
+export const AMB_COMERCIAL = ['Fachada / porta de enrolar', 'Piso', 'Paredes e pintura', 'Teto / forro', 'Iluminação e tomadas',
   'Quadro de energia', 'Instalações hidráulicas', 'Banheiro', 'Portas e fechaduras', 'Vidros e janelas'];
-const AMB_RESIDENCIAL = ['Sala', 'Cozinha', 'Quarto 1', 'Quarto 2', 'Banheiro social', 'Área de serviço', 'Iluminação e tomadas',
+export const AMB_RESIDENCIAL = ['Sala', 'Cozinha', 'Quarto 1', 'Quarto 2', 'Banheiro social', 'Área de serviço', 'Iluminação e tomadas',
   'Instalações hidráulicas', 'Portas e fechaduras', 'Pintura geral'];
 
 export const VistoriaModal = {
   components: { Modal, Anexos },
-  props: { contrato: Object, vistoria: Object },
+  props: { contrato: Object, vistoria: Object, tipoInicial: String },
   emits: ['fechar'],
   setup() { return { ...helpers, ESTADOS }; },
   data() {
     if (this.vistoria) return { f: clone(this.vistoria), salvando: false };
     const c = this.contrato;
     const entrada = c.vistorias.filter((x) => x.tipo === 'entrada').sort((a, b) => b.data.localeCompare(a.data))[0];
-    const tipo = entrada ? 'saida' : 'entrada';
-    const base = entrada ? entrada.ambientes.map((a) => a.nome) : (c.finalidade === 'residencial' ? AMB_RESIDENCIAL : AMB_COMERCIAL);
+    const tipo = this.tipoInicial || (entrada ? 'saida' : 'entrada');
+    const base = entrada && tipo === 'saida' ? entrada.ambientes.map((a) => a.nome) : (c.finalidade === 'residencial' ? AMB_RESIDENCIAL : AMB_COMERCIAL);
     return {
       salvando: false,
       f: { id: novoId(), tipo, data: hojeISO(), vistoriador: app.usuario, leituraEnergia: '', leituraAgua: '', leituraGas: '', chaves: '',
@@ -85,7 +85,7 @@ export const VistoriaModal = {
     <template #rodape>
       <button @click="$emit('fechar')">Cancelar</button>
       <button @click="salvar(false)" :disabled="salvando">Salvar</button>
-      <button class="primario" @click="salvar(true)" :disabled="salvando">{{ salvando ? 'Gerando…' : 'Salvar e gerar termo (.docx)' }}</button>
+      <button class="primario" @click="salvar(true)" :disabled="salvando">{{ salvando ? 'Gerando…' : 'Salvar e gerar laudo (.docx)' }}</button>
     </template>
   </Modal>`,
 };

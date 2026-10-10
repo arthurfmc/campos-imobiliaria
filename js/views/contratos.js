@@ -4,9 +4,10 @@ import { VistoriaModal, AditivoModal } from './vistoria.js';
 import { Anexos } from './anexos.js';
 import { INDICES } from '../indices.js';
 import { InquilinoForm, inquilinoVazio, validarInquilino } from './inquilinos.js';
-import { PagamentoModal } from './financeiro.js';
+import { PagamentoModal, HistoricoModal } from './financeiro.js';
 import * as D from '../db.js';
-import { contratoBlocos, notificacaoBlocos, aditivoBlocos, foroDe } from '../documentos.js';
+import { notificacaoBlocos, aditivoBlocos, foroDe } from '../documentos.js';
+import { contratoBlocos, TIPOS_GARANTIA } from '../modelos.js';
 import { clone, novoId, hojeISO, mesAtual, somaMeses, somaMesesData, diaMenos1, arred2 } from '../util.js';
 
 function contratoVazio(db0, query) {
@@ -20,9 +21,8 @@ function contratoVazio(db0, query) {
     valorInicial: Number(imovel?.aluguelPlanilha) || 0, indice: 'IGP-M', periodicidadeMeses: 12,
     formaPagamento: 'PIX ou depósito bancário', dadosBancarios: '', foro: '',
     encargos: { iptu: true, condominio: false, agua: true, luz: true, seguro: false },
-    garantia: { tipo: 'fiador', fiadorNome: '', fiadorCpf: '', fiadorRg: '', fiadorNacionalidade: 'brasileiro(a)', fiadorEstadoCivil: '',
-      fiadorProfissao: '', fiadorEndereco: '', fiadorConjuge: '', caucaoValor: 0, seguradora: '', apolice: '',
-      instituicao: '', numeroTitulo: '', valorTitulo: 0, vencimento: '' },
+    garantia: D.normalizarGarantia({ tipo: 'fiador', fiadores: [D.fiadorVazio()] }),
+    atraso: D.regrasAtrasoPadrao(db0.config, {}),
     controleDesde: mesAtual(), dataAssinatura: hoje, clausulasAdicionais: '', observacoes: '',
     status: 'ativo', reajustes: [], documentos: [], anexos: [], aditivos: [], vistorias: [],
   };
@@ -74,7 +74,7 @@ export const ContratosLista = {
 export const ContratoForm = {
   components: { InquilinoForm },
   props: { id: String, query: Object },
-  setup() { return { app, ...helpers, INDICES }; },
+  setup() { return { app, ...helpers, INDICES, TIPOS_GARANTIA, fiadorVazio: D.fiadorVazio }; },
   data() {
     return { form: null, novo: false, modoInquilino: 'existente', novoInq: inquilinoVazio(),
       emAndamento: false, valorAtual: 0, mesUltimoReajuste: '', gerando: false };
@@ -87,7 +87,11 @@ export const ContratoForm = {
     } else {
       const c = D.porId(this.db.contratos, this.id);
       this.form = c ? clone(c) : null;
-      if (this.form) this.form.garantia = { ...contratoVazio(this.db).garantia, ...this.form.garantia };
+      if (this.form) {
+        this.form.garantia = D.normalizarGarantia(this.form.garantia);
+        if (this.form.garantia.tipo === 'fiador' && !this.form.garantia.fiadores.length) this.form.garantia.fiadores.push(D.fiadorVazio());
+        this.form.atraso ||= D.regrasAtrasoPadrao(this.db.config, this.form);
+      }
     }
   },
   computed: {
@@ -108,6 +112,9 @@ export const ContratoForm = {
     'form.imovelId'(id) {
       const im = D.porId(this.db.imoveis, id);
       if (this.novo && im && !this.form.valorInicial) this.form.valorInicial = Number(im.aluguelPlanilha) || 0;
+    },
+    'form.garantia.tipo'(t) {
+      if (t === 'fiador' && !this.form.garantia.fiadores.length) this.form.garantia.fiadores.push(D.fiadorVazio());
     },
     'form.dataInicio'(v) {
       if (this.novo && v) this.form.controleDesde = v.slice(0, 7) > mesAtual() ? v.slice(0, 7) : mesAtual();
@@ -239,34 +246,62 @@ export const ContratoForm = {
         <label class="check"><input type="checkbox" v-model="form.encargos.seguro"> Seguro incêndio</label>
       </div>
       <div class="form-grid">
-        <label class="c2">Garantia<select v-model="form.garantia.tipo">
-          <option value="fiador">Fiador</option><option value="caucao">Caução em dinheiro</option>
-          <option value="seguro">Seguro fiança</option><option value="titulo">Título de capitalização</option>
-          <option value="nenhuma">Sem garantia</option></select></label>
-        <label class="c2" v-if="form.garantia.tipo !== 'nenhuma'">Vencimento / validade da garantia<input type="date" v-model="form.garantia.vencimento">
+        <label class="c3">Modalidade de garantia<select v-model="form.garantia.tipo">
+          <option v-for="(rot, k) in TIPOS_GARANTIA" :value="k">{{ rot }}</option></select>
+          <small>A lei permite só uma modalidade por contrato (art. 37), mas a fiança pode ter vários fiadores.</small></label>
+        <label class="c2" v-if="!['nenhuma', 'antecipado'].includes(form.garantia.tipo)">Validade da garantia<input type="date" v-model="form.garantia.vencimento">
           <small>gera alerta 60 dias antes</small></label>
-        <span class="c2" v-if="form.garantia.tipo !== 'nenhuma'"></span>
-        <template v-if="form.garantia.tipo === 'fiador'">
-          <label class="c4">Nome do fiador<input v-model="form.garantia.fiadorNome"></label>
-          <label class="c2">CPF<input v-model="form.garantia.fiadorCpf" @blur="form.garantia.fiadorCpf = fmtCpfCnpj(form.garantia.fiadorCpf)"></label>
-          <label class="c2">RG<input v-model="form.garantia.fiadorRg"></label>
-          <label class="c2">Estado civil<input v-model="form.garantia.fiadorEstadoCivil"></label>
-          <label class="c2">Profissão<input v-model="form.garantia.fiadorProfissao"></label>
-          <label class="c4">Endereço<input v-model="form.garantia.fiadorEndereco"></label>
-          <label class="c6">Cônjuge do fiador (se casado, também assina)<input v-model="form.garantia.fiadorConjuge" placeholder="Nome completo, CPF"></label>
-        </template>
-        <label class="c2" v-if="form.garantia.tipo === 'caucao'">Valor da caução (R$)<input v-model.number="form.garantia.caucaoValor" type="number" step="0.01">
-          <small>máx. 3 aluguéis = {{ fmtMoeda(form.valorInicial * 3) }}</small></label>
-        <template v-if="form.garantia.tipo === 'titulo'">
-          <label class="c2">Instituição emissora<input v-model="form.garantia.instituicao"></label>
-          <label class="c2">Nº do título<input v-model="form.garantia.numeroTitulo"></label>
-          <label class="c2">Valor (R$)<input v-model.number="form.garantia.valorTitulo" type="number" step="0.01"></label>
-        </template>
-        <template v-if="form.garantia.tipo === 'seguro'">
-          <label class="c2">Seguradora<input v-model="form.garantia.seguradora"></label>
-          <label class="c2">Nº da apólice<input v-model="form.garantia.apolice"></label>
-        </template>
       </div>
+
+      <div v-if="form.garantia.tipo === 'fiador'" class="sub-bloco">
+        <div v-for="(f, k) in form.garantia.fiadores" :key="k" class="fiador">
+          <div class="cab-cartao"><h3>Fiador {{ k + 1 }}</h3>
+            <button v-if="form.garantia.fiadores.length > 1" class="pequeno perigo" @click="form.garantia.fiadores.splice(k, 1)">Remover</button></div>
+          <div class="form-grid">
+            <label class="c4">Nome completo<input v-model="f.nome"></label>
+            <label class="c2">CPF<input v-model="f.cpf" @blur="f.cpf = fmtCpfCnpj(f.cpf)" inputmode="numeric"></label>
+            <label class="c2">RG<input v-model="f.rg"></label>
+            <label class="c1">Nacionalidade<input v-model="f.nacionalidade"></label>
+            <label class="c1">Estado civil<input v-model="f.estadoCivil"></label>
+            <label class="c2">Profissão<input v-model="f.profissao"></label>
+            <label class="c4">Endereço completo<input v-model="f.endereco"></label>
+            <label class="c2">Telefone / e-mail<input v-model="f.telefone"></label>
+            <label class="c4">Cônjuge (se casado, também assina — outorga do cônjuge)<input v-model="f.conjugeNome"></label>
+            <label class="c2">CPF do cônjuge<input v-model="f.conjugeCpf" @blur="f.conjugeCpf = fmtCpfCnpj(f.conjugeCpf)"></label>
+          </div>
+        </div>
+        <button class="pequeno" @click="form.garantia.fiadores.push(fiadorVazio())">+ Adicionar fiador</button>
+      </div>
+
+      <div v-if="form.garantia.tipo === 'caucao'" class="form-grid sub-bloco">
+        <label class="c2">Forma da caução<select v-model="form.garantia.caucaoModalidade">
+          <option value="dinheiro">Dinheiro (depósito em poupança)</option><option value="cheques">Cheque(s)</option><option value="bens">Bens móveis ou imóveis</option></select></label>
+        <label class="c2">Valor (R$)<input v-model.number="form.garantia.caucaoValor" type="number" step="0.01">
+          <small>dinheiro: máx. 3 aluguéis = {{ fmtMoeda(form.valorInicial * 3) }}</small></label>
+        <label class="c6" v-if="form.garantia.caucaoModalidade !== 'dinheiro'">{{ form.garantia.caucaoModalidade === 'bens' ? 'Descrição dos bens' : 'Cheques (banco, números, valores)' }}<input v-model="form.garantia.caucaoDescricao"></label>
+      </div>
+      <div v-if="form.garantia.tipo === 'titulo'" class="form-grid sub-bloco">
+        <label class="c2">Instituição emissora<input v-model="form.garantia.instituicao"></label>
+        <label class="c2">Nº do título<input v-model="form.garantia.numeroTitulo"></label>
+        <label class="c2">Valor (R$)<input v-model.number="form.garantia.valorTitulo" type="number" step="0.01"></label>
+      </div>
+      <div v-if="form.garantia.tipo === 'seguro'" class="form-grid sub-bloco">
+        <label class="c3">Seguradora<input v-model="form.garantia.seguradora"></label>
+        <label class="c3">Nº da apólice<input v-model="form.garantia.apolice"></label>
+      </div>
+      <p v-if="form.garantia.tipo === 'antecipado'" class="dica sub-bloco">Sem garantia, a lei permite exigir o aluguel antecipado, até o 6º dia útil do mês a vencer (art. 42). Fora disso, cobrar meses adiantados é vedado (art. 20), exceto em locação para temporada.</p>
+    </div>
+
+    <div class="cartao">
+      <h2>Multa e juros por atraso</h2>
+      <div class="form-grid">
+        <label class="c1">Multa (%)<input type="number" step="0.1" v-model.number="form.atraso.multaPct"></label>
+        <label class="c1">Juros ao mês (%)<input type="number" step="0.1" v-model.number="form.atraso.jurosMesPct"></label>
+        <label class="c2">Juros e correção a partir de<select v-model.number="form.atraso.jurosAposDias">
+          <option :value="0">1º dia de atraso</option><option :value="30">atraso maior que 30 dias</option></select></label>
+        <label class="c2 check"><input type="checkbox" v-model="form.atraso.correcao"> Correção monetária pelo índice do contrato</label>
+      </div>
+      <p class="dica">Os contratos atuais da família usam: multa de 10% logo após o vencimento; juros de 1% a.m. e correção só se o atraso passar de 1 mês. Essas regras são usadas para calcular o que cobrar em cada pagamento.</p>
     </div>
 
     <div class="cartao">
@@ -287,10 +322,10 @@ export const ContratoForm = {
 
 // ---------------------------------------------------------------------------
 export const ContratoDetalhe = {
-  components: { Chip, Modal, PagamentoModal, VistoriaModal, AditivoModal, Anexos },
+  components: { Chip, Modal, PagamentoModal, HistoricoModal, VistoriaModal, AditivoModal, Anexos },
   props: { id: String },
   setup() { return { app, ...helpers }; },
-  data() { return { encerrar: null, pagamento: null, ocupado: false, vistoria: null, aditivo: false }; },
+  data() { return { encerrar: null, pagamento: null, ocupado: false, vistoria: null, aditivo: false, historico: false, verTodos: false }; },
   computed: {
     db,
     c() { return D.porId(this.db.contratos, this.id); },
@@ -302,16 +337,28 @@ export const ContratoDetalhe = {
       const inicio = c.controleDesde || c.dataInicio.slice(0, 7);
       const fimCtrl = c.status === 'ativo' ? mesAtual() : (c.dataEncerramento || D.fimContrato(c)).slice(0, 7);
       const lista = [];
-      for (let ym = fimCtrl; ym >= inicio && lista.length < 24; ym = somaMeses(ym, -1)) {
-        lista.push(...D.cobrancasDoMes({ ...this.db, contratos: [c] }, ym));
+      for (let ym = fimCtrl; ym >= inicio && lista.length < (this.verTodos ? 600 : 12); ym = somaMeses(ym, -1)) {
+        lista.push(...D.cobrancasDoMes({ ...this.db, contratos: [c] }, ym, app.indices));
       }
       return lista;
     },
     garantiaTexto() {
       const g = this.c.garantia || {};
-      return { fiador: `Fiador: ${g.fiadorNome || '—'}`, caucao: `Caução: ${this.fmtMoeda(g.caucaoValor)}`,
+      const fs = (g.fiadores || []).filter((f) => f.nome);
+      return { fiador: fs.length ? `${fs.length > 1 ? 'Fiadores' : 'Fiador'}: ${fs.map((f) => f.nome).join(', ')}` : 'Fiador: —',
+        antecipado: 'Aluguel antecipado (art. 42)', caucao: `Caução: ${this.fmtMoeda(g.caucaoValor)}`,
         seguro: `Seguro fiança ${g.seguradora || ''}`, titulo: `Título de capitalização ${this.fmtMoeda(g.valorTitulo)}`,
         nenhuma: 'Sem garantia' }[g.tipo] || '—';
+    },
+    resumoPag() {
+      const todos = [];
+      const c = this.c;
+      const inicio = c.controleDesde || c.dataInicio.slice(0, 7);
+      const fim = c.status === 'ativo' ? mesAtual() : (c.dataEncerramento || D.fimContrato(c)).slice(0, 7);
+      for (let ym = inicio; ym <= fim; ym = somaMeses(ym, 1)) todos.push(...D.cobrancasDoMes({ ...this.db, contratos: [c] }, ym, app.indices));
+      const pagos = todos.filter((x) => x.pagamento);
+      return { meses: todos.length, pagos: pagos.length, comAtraso: pagos.filter((x) => x.pagoComAtraso).length,
+        aCobrar: todos.reduce((s, x) => s + (x.pagamento ? x.aCobrar : 0), 0), emAberto: todos.filter((x) => x.status === 'atrasado').length };
     },
     garantiaVence() { return D.garantiaVencimento(this.c); },
     multa() {
@@ -425,22 +472,29 @@ export const ContratoDetalhe = {
 
     <div class="cartao">
       <div class="cab-cartao"><h2>Pagamentos</h2>
-        <small>Controle desde {{ fmtMes(c.controleDesde) }}</small></div>
+        <div class="linha-botoes"><small>Controle desde {{ fmtMes(c.controleDesde) }}</small>
+          <button class="pequeno" @click="historico = true">Lançar histórico de pagamentos</button></div></div>
+      <p class="resumo-pag">{{ resumoPag.pagos }} de {{ resumoPag.meses }} meses pagos · {{ resumoPag.comAtraso }} com atraso
+        <span v-if="resumoPag.emAberto" class="texto-ruim"> · {{ resumoPag.emAberto }} em aberto</span>
+        <span v-if="resumoPag.aCobrar > 0.009" class="texto-ruim"> · multa/juros não cobrados: {{ fmtMoeda(resumoPag.aCobrar) }}</span></p>
       <table class="tabela">
-        <thead><tr><th>Competência</th><th>Vencimento</th><th class="num">Valor</th><th>Status</th><th>Pago em</th><th class="num">Valor pago</th><th></th></tr></thead>
+        <thead><tr><th>Competência</th><th>Vencimento</th><th class="num">Valor</th><th>Status</th><th>Pago em</th><th class="num">Valor pago</th><th class="num">Multa/juros devidos</th><th></th></tr></thead>
         <tbody>
           <tr v-for="cob in cobrancas" :key="cob.competencia">
             <td>{{ fmtMes(cob.competencia) }}</td><td>{{ fmtData(cob.vencimento) }}</td><td class="num">{{ fmtMoeda(cob.valor) }}</td>
-            <td><Chip :status="cob.status" /></td><td>{{ fmtData(cob.pagamento?.dataPagamento) }}</td>
+            <td><Chip :status="cob.status" /></td><td>{{ fmtData(cob.pagamento?.dataPagamento) }}<small v-if="cob.pagoComAtraso"><br>{{ cob.encargos.dias }} dia(s) de atraso</small></td>
             <td class="num">{{ cob.pagamento ? fmtMoeda(cob.pagamento.valorPago) : '' }}</td>
+            <td class="num"><template v-if="cob.encargos.total">{{ fmtMoeda(cob.encargos.total) }}<br>
+              <small :class="{ 'texto-ruim': cob.aCobrar > 0.009 }">{{ !cob.pagamento ? 'atualizado até hoje' : cob.aCobrar > 0.009 ? 'faltou cobrar ' + fmtMoeda(cob.aCobrar) : 'cobrado' }}</small></template></td>
             <td class="acoes-linha">
               <button v-if="!cob.pagamento" class="pequeno" @click="pagamento = cob">Registrar</button>
               <template v-else><button class="pequeno" @click="pagamento = cob">Editar</button><button class="pequeno" @click="recibo(cob.pagamento)">Recibo</button></template>
             </td>
           </tr>
-          <tr v-if="!cobrancas.length"><td colspan="7" class="vazio">Sem cobranças no período.</td></tr>
+          <tr v-if="!cobrancas.length"><td colspan="8" class="vazio">Sem cobranças no período. Use "Lançar histórico de pagamentos" para registrar meses anteriores.</td></tr>
         </tbody>
       </table>
+      <button v-if="!verTodos && resumoPag.meses > 12" class="pequeno" @click="verTodos = true">Ver todos os {{ resumoPag.meses }} meses</button>
     </div>
 
     <div class="cartao">
@@ -462,7 +516,9 @@ export const ContratoDetalhe = {
     </div>
 
     <div class="cartao">
-      <div class="cab-cartao"><h2>Vistorias</h2><button class="pequeno" @click="vistoria = {}">+ Nova vistoria</button></div>
+      <div class="cab-cartao"><h2>Vistorias</h2><div class="linha-botoes">
+        <a class="botao pequeno" :href="'#/documentos?tipo=branco_entrada&contrato=' + c.id">Laudo em branco</a>
+        <button class="pequeno" @click="vistoria = {}">+ Nova vistoria</button></div></div>
       <p v-if="!vistorias.length" class="vazio">Nenhuma vistoria registrada. Faça a de entrada na entrega das chaves.</p>
       <table v-else class="tabela">
         <thead><tr><th>Data</th><th>Tipo</th><th>Itens</th><th>Fotos</th><th></th></tr></thead>
@@ -539,6 +595,7 @@ export const ContratoDetalhe = {
       <template #rodape><button @click="encerrar = null">Cancelar</button><button class="primario" @click="confirmarEncerramento">Encerrar</button></template>
     </Modal>
     <PagamentoModal v-if="pagamento" :cobranca="pagamento" @fechar="pagamento = null" />
+    <HistoricoModal v-if="historico" :contrato="c" @fechar="historico = false" />
     <VistoriaModal v-if="vistoria" :contrato="c" :vistoria="vistoria.id ? vistoria : null" @fechar="vistoria = null" />
     <AditivoModal v-if="aditivo" :contrato="c" @fechar="aditivo = false" />
   </section>
