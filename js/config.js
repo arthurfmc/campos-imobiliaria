@@ -12,7 +12,8 @@ export const CONFIG = {
   pastaOneDrive: 'Campos_Patrimonial/Imobiliaria',
 
   // Subpastas onde os documentos gerados são salvos (dentro da pasta acima).
-  pastaContratos: 'Contratos',
-  pastaNotificacoes: 'Notificacoes',
-  pastaRecibos: 'Recibos',
+  pastaContratos: 'contratos/Vigentes',
+  pastaNotificacoes: 'notificações',
+  pastaLaudos: 'laudos',
+  pastaRecibos: 'recibos',
 };

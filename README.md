@@ -14,12 +14,14 @@ reajuste e recibos em Word (.docx) ou PDF.
 ```
 OneDrive\Campos_Patrimonial\
 ├── Imobiliaria\                 ← pasta de DADOS (compartilhar com o pai)
-│   ├── Base_Ativos.xlsx         (planilha original, não é alterada)
-│   ├── dados\imobiliaria.json   (base de dados do sistema)
-│   ├── dados\backups\           (uma cópia automática por dia)
-│   ├── Contratos\               (contratos .docx gerados)
-│   ├── Notificacoes\            (notificações de reajuste)
-│   └── Recibos\                 (recibos de aluguel)
+│   ├── dados\imobiliaria.json   (base de dados do sistema) e dadosackups\ (cópia diária)
+│   ├── contratos\Vigentes\      (contratos em vigor; o sistema gera os novos aqui)
+│   ├── contratos\Encerrados\    (contratos antigos)
+│   ├── contratos\Originais\     (arquivos como estavam antes da organização)
+│   ├── laudos\                  (laudos/termos de vistoria)
+│   ├── certidoes\               (certidões)
+│   ├── notificações\            (notificações extrajudiciais e de reajuste)
+│   └── recibos\                 (recibos de aluguel)
 └── sistema-imobiliaria\         ← CÓDIGO do site (esta pasta, vai para o GitHub)
 ```
 

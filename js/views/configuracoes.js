@@ -127,7 +127,7 @@ export const Configuracoes = {
     <div class="cartao">
       <h2>Dados</h2>
       <p>Pasta: <b>{{ app.pasta?.nome }}</b> <a v-if="app.pasta?.webUrl" :href="app.pasta.webUrl" target="_blank" rel="noopener">abrir no OneDrive ↗</a></p>
-      <p class="dica">Os dados ficam em <code>dados/imobiliaria.json</code>, com uma cópia de segurança diária em <code>dados/backups/</code>. Contratos, notificações e recibos ficam nas pastas <code>Contratos</code>, <code>Notificacoes</code> e <code>Recibos</code>.</p>
+      <p class="dica">Os dados ficam em <code>dados/imobiliaria.json</code>, com uma cópia de segurança diária em <code>dados/backups/</code>. Contratos gerados ficam em <code>contratos/Vigentes</code>, laudos de vistoria em <code>laudos</code>, notificações em <code>notificações</code> e recibos em <code>recibos</code>.</p>
       <div class="linha-botoes"><button @click="exportar">Baixar cópia dos dados (.json)</button></div>
       <div v-if="app.modo === 'onedrive'" class="sub-bloco">
         <h3>Usar outra pasta</h3>

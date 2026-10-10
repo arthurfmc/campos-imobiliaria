@@ -69,7 +69,7 @@ export async function blocosVistoria(c, vs) {
 export async function gerarVistoriaDocx(contratoId, vistoriaId) {
   const c = D.porId(db().contratos, contratoId);
   const vs = D.porId(c.vistorias, vistoriaId);
-  const doc = await gerarDocx(await blocosVistoria(c, vs), nomeArquivoVistoria(db(), c, vs), pastaDoContrato(c));
+  const doc = await gerarDocx(await blocosVistoria(c, vs), nomeArquivoVistoria(db(), c, vs), CONFIG.pastaLaudos);
   app.store.commit(`Termo de vistoria de ${vs.tipo} gerado`, (d) => {
     const cc = D.porId(d.contratos, contratoId);
     (cc.documentos ||= []).unshift({ tipo: `Vistoria de ${vs.tipo === 'saida' ? 'saída' : 'entrada'}`, ...doc });
