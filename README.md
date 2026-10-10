@@ -14,7 +14,7 @@ reajuste e recibos em Word (.docx) ou PDF.
 ```
 OneDrive\Campos_Patrimonial\
 ├── Imobiliaria\                 ← pasta de DADOS (compartilhar com o pai)
-│   ├── dados\imobiliaria.json   (base de dados do sistema) e dadosackups\ (cópia diária)
+│   ├── dados\imobiliaria.json   (base de dados do sistema) e dados\backups\ (cópia diária)
 │   ├── contratos\Vigentes\      (contratos em vigor; o sistema gera os novos aqui)
 │   ├── contratos\Encerrados\    (contratos antigos)
 │   ├── contratos\Originais\     (arquivos como estavam antes da organização)
